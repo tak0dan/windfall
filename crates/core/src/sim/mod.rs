@@ -28,6 +28,9 @@ pub struct Surf {
     pub kind: SurfKind,
     /// How far in from each end the top edge starts (rounded corners).
     pub inset: f32,
+    /// Parts of one bar share a group, and are judged together: what stands on one part may stay if another
+    /// part now covers the spot. Zero when it stands alone.
+    pub group: u64,
     /// False while the surface exists but isn't on screen (another workspace): it keeps what lies on it.
     pub shown: bool,
 }
@@ -168,7 +171,7 @@ impl World {
     pub fn set_scene(&mut self, scene: Scene) {
         let mut carried: Vec<u64> = Vec::new();
         let mut vanished: Vec<u64> = Vec::new();
-        let mut cut: Vec<Pile> = Vec::new();
+        let mut cut: Vec<(u64, Pile)> = Vec::new();
         for (id, pile) in self.piles.iter_mut() {
             match scene.surfs.iter().find(|s| s.id == *id) {
                 None => vanished.push(*id),
@@ -179,7 +182,7 @@ impl World {
                     if (s.rect.y - pile.base).abs() > 4.0 {
                         vanished.push(*id);
                     } else {
-                        cut.extend(pile.fit(s.rect.x + s.inset, s.rect.right() - s.inset));
+                        cut.extend(pile.fit(s.rect.x + s.inset, s.rect.right() - s.inset).into_iter().map(|c| (*id, c)));
                         pile.base = s.rect.y;
                     }
                 }
@@ -197,8 +200,33 @@ impl World {
                 }
             }
         }
-        for pile in cut {
-            self.sheds.push(Shed { pile, follow: None, rate: 2.2, acc: 0.0 });
+        // What lay on ground that is gone stays if another painted part of the same bar now covers the spot,
+        // and the rest comes apart.
+        let mut moves: Vec<(u64, f32, f32, u8)> = Vec::new();
+        for (from, mut pile) in cut {
+            let group = scene.surfs.iter().find(|s| s.id == from).map_or(0, |s| s.group);
+            if group != 0 {
+                for i in 0..pile.h.len() {
+                    if pile.h[i] <= 0.0 {
+                        continue;
+                    }
+                    let x = pile.x0 + (i as f32 + 0.5) * pile::CELL;
+                    let home = scene.surfs.iter().find(|s| s.kind == SurfKind::Layer && s.group == group && s.id != from && x >= s.rect.x + s.inset && x < s.rect.right() - s.inset);
+                    if let Some(t) = home {
+                        moves.push((t.id, x, pile.h[i], pile.c[i]));
+                        pile.h[i] = 0.0;
+                    }
+                }
+            }
+            if pile.total() > 0.3 {
+                self.sheds.push(Shed { pile, follow: None, rate: 2.2, acc: 0.0 });
+            }
+        }
+        for (id, x, h, c) in moves {
+            if let Some(t) = scene.surfs.iter().find(|s| s.id == id) {
+                let (x0, w, base) = (t.rect.x + t.inset, (t.rect.w - 2.0 * t.inset).max(0.0), t.rect.y);
+                self.piles.entry(id).or_insert_with(|| Pile::new(x0, w, base)).deposit(x, h, c, 20.0);
+            }
         }
         for id in carried {
             if let Some(pile) = self.piles.remove(&id) {
@@ -219,12 +247,13 @@ impl World {
                 }
             }
         }
-        // Lawns follow their surface; a lawn whose surface is gone leaves in an orderly wave.
+        // Lawns follow their surface (stretching and squeezing with it); a lawn whose surface is gone leaves
+        // in an orderly wave.
         let rng = &mut self.rng;
         let mut gone: Vec<u64> = Vec::new();
-        for (id, bed) in self.flowers.iter_mut() {
-            match scene.surfs.iter().find(|s| s.id == *id) {
-                None => gone.push(*id),
+        for (key, bed) in self.flowers.iter_mut() {
+            match scene.surfs.iter().find(|s| s.id == *key) {
+                None => gone.push(*key),
                 Some(s) => bed.update(s, rng),
             }
         }
@@ -542,21 +571,23 @@ impl World {
     fn flowers_step(&mut self, dt: f32, p: &Params) {
         let cursor = if p.interact { self.scene.cursor } else { None };
         let mut puffs: Vec<[f32; 2]> = Vec::new();
-        for s in &self.scene.surfs {
-            let usable = match s.kind {
+        let usable = |s: &Surf| {
+            let allowed = match s.kind {
                 SurfKind::Ground => p.ground,
                 SurfKind::Window => p.windows,
                 SurfKind::Layer => p.layers,
             };
-            if !usable || !s.shown || s.rect.w - 2.0 * s.inset <= 6.0 {
+            allowed && s.shown && s.rect.w - 2.0 * s.inset > 6.0
+        };
+        for s in &self.scene.surfs {
+            if !usable(s) {
                 continue;
             }
             let hidden_at = |x: f32| s.kind != SurfKind::Ground && self.scene.surfs.iter().any(|o| o.id != s.id && o.shown && o.z > s.z && o.rect.contains(x, s.rect.y + 2.0));
             let bed = self.flowers.entry(s.id).or_insert_with(|| flowers::Bed::new(s, &mut self.rng));
-            let lost = bed.step(dt, p.intensity, cursor, &mut self.rng, &hidden_at);
-            puffs.extend(lost);
+            puffs.extend(bed.step(dt, p.intensity, cursor, &mut self.rng, &hidden_at));
         }
-            for bed in &mut self.orphans {
+        for bed in &mut self.orphans {
             puffs.extend(bed.step(dt, p.intensity, None, &mut self.rng, &|_| false));
         }
         self.orphans.retain(|b| !b.is_empty());

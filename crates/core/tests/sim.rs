@@ -12,8 +12,8 @@ fn scene(cursor: Option<[f32; 2]>) -> Scene {
         w: 1920.0,
         h: 1080.0,
         surfs: vec![
-            Surf { id: 0, rect: Rect::new(0.0, 1050.0, 1920.0, 2000.0), z: -1, kind: SurfKind::Ground, inset: 0.0, shown: true },
-            Surf { id: 1, rect: Rect::new(400.0, 300.0, 600.0, 400.0), z: 0, kind: SurfKind::Window, inset: 8.0, shown: true },
+            Surf { id: 0, rect: Rect::new(0.0, 1050.0, 1920.0, 2000.0), z: -1, kind: SurfKind::Ground, inset: 0.0, group: 0, shown: true },
+            Surf { id: 1, rect: Rect::new(400.0, 300.0, 600.0, 400.0), z: 0, kind: SurfKind::Window, inset: 8.0, group: 0, shown: true },
         ],
         cursor,
     }
@@ -210,7 +210,7 @@ fn bar_that_shrinks_drops_what_lay_on_the_lost_part() {
     let bar = |x0: f32, w: f32| Scene {
         w: 1920.0,
         h: 1080.0,
-        surfs: vec![Surf { id: 9, rect: Rect::new(x0, 1000.0, w, 30.0), z: 1000, kind: SurfKind::Layer, inset: 0.0, shown: true }],
+        surfs: vec![Surf { id: 9, rect: Rect::new(x0, 1000.0, w, 30.0), z: 1000, kind: SurfKind::Layer, inset: 0.0, group: 0, shown: true }],
         cursor: None,
     };
     let mut w = World::new(11);
@@ -229,31 +229,36 @@ fn bar_that_shrinks_drops_what_lay_on_the_lost_part() {
 }
 
 #[test]
-fn flowers_on_a_lost_stretch_puff_away() {
+fn flowers_on_a_shrinking_bar_part_squeeze_together_and_only_a_vanished_part_puffs() {
     let bar = |w: f32| Scene {
         w: 1920.0,
         h: 1080.0,
-        surfs: vec![Surf { id: 9, rect: Rect::new(300.0, 1000.0, w, 30.0), z: 1000, kind: SurfKind::Layer, inset: 0.0, shown: true }],
+        surfs: vec![Surf { id: 9, rect: Rect::new(300.0, 1000.0, w, 30.0), z: 1000, kind: SurfKind::Layer, inset: 0.0, group: 0, shown: true }],
         cursor: None,
     };
+    let blue = |b: &Batch| b.data.chunks(8).filter(|v| (v[4] - 0.35).abs() < 1e-3 && (v[5] - 0.62).abs() < 1e-3 && (v[6] - 1.0).abs() < 1e-3).count();
     let mut w = World::new(12);
     w.set_scene(bar(800.0));
     let p = params(Effect::Flowers);
     run(&mut w, &p, 30.0);
+    // Shrinking: nothing puffs.
     w.set_scene(bar(300.0));
-    // Nothing goes at once: the ground has to stay missing for a moment first.
     let mut b = Batch::default();
-    w.draw(&mut b, &p);
-    let blue = |b: &Batch| b.data.chunks(8).filter(|v| (v[4] - 0.35).abs() < 1e-3 && (v[5] - 0.62).abs() < 1e-3 && (v[6] - 1.0).abs() < 1e-3).count();
-    assert_eq!(blue(&b), 0, "went too early");
-    let mut seen = 0;
     for _ in 0..(3 * 60) {
+        w.step(1.0 / 60.0, &p);
+        b.clear();
+        w.draw(&mut b, &p);
+        assert_eq!(blue(&b), 0, "a shrinking part must not puff its flowers away");
+    }
+    // Vanishing altogether: they puff, starting at once.
+    w.set_scene(Scene { w: 1920.0, h: 1080.0, surfs: vec![], cursor: None });
+    let mut seen = 0;
+    for _ in 0..(2 * 60) {
         w.step(1.0 / 60.0, &p);
         b.clear();
         w.draw(&mut b, &p);
         seen = seen.max(blue(&b));
     }
-    // Blue puffs are drawn with colour (0.35, 0.62, 1.0).
     assert!(seen > 0, "no puffs");
 }
 
@@ -262,7 +267,7 @@ fn a_hidden_window_does_not_hide_flowers_below_it() {
     // A floating window on another workspace (a scratchpad terminal, say) sits over the window top but is
     // not on screen, so it must not cover anything.
     let mut sc = scene(None);
-    sc.surfs.push(Surf { id: 5, rect: Rect::new(300.0, 250.0, 900.0, 700.0), z: 480, kind: SurfKind::Window, inset: 8.0, shown: false });
+    sc.surfs.push(Surf { id: 5, rect: Rect::new(300.0, 250.0, 900.0, 700.0), z: 480, kind: SurfKind::Window, inset: 8.0, group: 0, shown: false });
     let mut w = World::new(21);
     w.set_scene(sc);
     let p = params(Effect::Flowers);
@@ -272,4 +277,18 @@ fn a_hidden_window_does_not_hide_flowers_below_it() {
     // Green stems and grass over the window's top edge (x 400..1000, y just above 300) must be drawn.
     let over_window = b.data.chunks(8).filter(|v| v[0] > 420.0 && v[0] < 980.0 && v[1] > 285.0 && v[1] < 300.0).count();
     assert!(over_window > 200, "the window's lawn is hidden: {over_window}");
+}
+
+#[test]
+fn snow_on_a_reshaped_bar_stays_where_another_part_now_covers_it() {
+    let part = |id: u64, x: f32, w: f32| Surf { id, rect: Rect::new(x, 1000.0, w, 30.0), z: 1000, kind: SurfKind::Layer, inset: 0.0, group: 7, shown: true };
+    let scene = |a: (f32, f32), b: (f32, f32)| Scene { w: 1920.0, h: 1080.0, surfs: vec![part(1, a.0, a.1), part(2, b.0, b.1)], cursor: None };
+    let mut w = World::new(31);
+    w.set_scene(scene((100.0, 300.0), (420.0, 300.0)));
+    run(&mut w, &params(Effect::Snow), 100.0);
+    let at_350 = w.pile_height(1, 350.0);
+    assert!(at_350 > 1.0);
+    // Part one shrinks to [100,300]; part two grows to start at 300, so it now covers x=350.
+    w.set_scene(scene((100.0, 200.0), (300.0, 420.0)));
+    assert!(w.pile_height(2, 350.0) >= at_350 * 0.8, "the snow at 350 was lost though ground is still there");
 }

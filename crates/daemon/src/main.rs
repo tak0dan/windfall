@@ -324,7 +324,7 @@ impl App {
                                 z: s.z,
                                 kind: SurfKind::Layer,
                                 inset: 2.0,
-                                shown: true,
+                                group: s.id, shown: true,
                             });
                         }
                         self.seg_ids.insert(s.id, now);

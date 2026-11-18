@@ -191,7 +191,7 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
                 kind: SurfKind::Window,
                 inset: style_cache.rounding.min(c.size[0] as f32 / 3.0),
                 // Windows of other workspaces keep their snow, unseen, until they come back.
-                shown: on_screen,
+                group: 0, shown: on_screen,
             });
         }
         let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -215,13 +215,14 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
                     }
                     let nth = seen.entry(l.namespace.clone()).or_insert(0usize);
                     *nth += 1;
-                    surfs.push(Surf { id: hash(&format!("{}/{}/{}", m.name, l.namespace, *nth), 11), rect: Rect::new(x, y, l.w as f32, l.h as f32), z: 1000, kind: SurfKind::Layer, inset: 4.0, shown: true });
+                    let lid = hash(&format!("{}/{}/{}", m.name, l.namespace, *nth), 11);
+                    surfs.push(Surf { id: lid, rect: Rect::new(x, y, l.w as f32, l.h as f32), z: 1000, kind: SurfKind::Layer, inset: 4.0, group: lid, shown: true });
                 }
             }
         }
         // The ground is the screen's lower edge, or the bar that sits on it.
         if !bottom_bar {
-            surfs.push(Surf { id: 1, rect: Rect::new(0.0, h - bottom, w, 4000.0), z: -1, kind: SurfKind::Ground, inset: 0.0, shown: true });
+            surfs.push(Surf { id: 1, rect: Rect::new(0.0, h - bottom, w, 4000.0), z: -1, kind: SurfKind::Ground, inset: 0.0, group: 0, shown: true });
         }
         let mut local = None;
         if let Some(c) = cursor {

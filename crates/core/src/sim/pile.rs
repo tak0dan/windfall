@@ -114,6 +114,12 @@ impl Pile {
             self.h[i + 1] = (self.h[i + 1] + amount * 0.2).min(cap);
         }
     }
+    /// Puts `amount` straight into the cell at `x` (snow that was already lying somewhere nearby).
+    pub fn deposit(&mut self, x: f32, amount: f32, col: u8, cap: f32) {
+        let i = self.idx(x);
+        self.h[i] = (self.h[i] + amount).min(cap);
+        self.c[i] = col;
+    }
     /// Lets steep slopes slump, with edges tapering off.
     pub fn relax(&mut self, dt: f32) {
         self.age += dt;

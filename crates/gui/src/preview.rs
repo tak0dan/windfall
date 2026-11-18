@@ -97,8 +97,8 @@ fn scene(w: f32, h: f32, cursor: Option<[f32; 2]>) -> Scene {
         w: w * 1.0,
         h,
         surfs: vec![
-            Surf { id: 1, rect: Rect::new(0.0, ground, w, 400.0), z: -1, kind: SurfKind::Ground, inset: 0.0, shown: true },
-            Surf { id: 2, rect: win, z: 0, kind: SurfKind::Window, inset: 6.0, shown: true },
+            Surf { id: 1, rect: Rect::new(0.0, ground, w, 400.0), z: -1, kind: SurfKind::Ground, inset: 0.0, group: 0, shown: true },
+            Surf { id: 2, rect: win, z: 0, kind: SurfKind::Window, inset: 6.0, group: 0, shown: true },
         ],
         cursor,
     }
