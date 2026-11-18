@@ -10,7 +10,7 @@ depends=('gtk4' 'libadwaita' 'libglvnd' 'wayland' 'gcc-libs' 'glibc')
 makedepends=('cargo')
 optdepends=('ttf-jetbrains-mono: pixel-theme font fallback'
             'ttf-press-start-2p: authentic pixel font for the controller in pixel mode')
-options=('!lto')
+options=('!lto' '!debug')
 provides=('snowhush')
 conflicts=('snowhush')
 source=("$pkgname::git+$url.git")

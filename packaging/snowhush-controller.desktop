@@ -6,6 +6,6 @@ Comment=Snow, leaves, blossom, rain or flowers on your Hyprland desktop
 Exec=snowhush-gui
 Icon=snowhush
 Terminal=false
-Categories=Utility;GTK;Settings;
+Categories=Utility;GTK;
 Keywords=snow;weather;rain;flowers;wallpaper;effect;overlay;
 StartupWMClass=io.github.snowhush.Controller
