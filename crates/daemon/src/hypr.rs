@@ -177,7 +177,7 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
                 continue;
             }
             let (x, y) = (c.at[0] as f32 - m.x as f32, c.at[1] as f32 - m.y as f32);
-            if y < 20.0 {
+            if y < 20.0 || c.size[0] < 48.0 || c.size[1] < 24.0 {
                 continue;
             }
             // The window's border sits outside its geometry; snow rests on the border.

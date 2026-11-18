@@ -75,14 +75,13 @@ pub fn segments(s: &Strip) -> Vec<Segment> {
         let len = end - start;
         if len >= MIN_RUN && tops.len() * 10 >= len * 8 {
             tops.sort_unstable();
-            let top = tops[tops.len() / 2] as f32;
-            if top > 10.0 {
-                x = end;
-                continue;
+            let top = tops[tops.len() / 2];
+            // A module has sides: wallpaper that merely has a level edge somewhere does not.
+            if top <= 10 && closed_ends(s, start, end, top) {
+                // Rounded corners: keep a little in from both ends.
+                let trim = 3.0f32.min(len as f32 / 4.0);
+                out.push(Segment { x0: start as f32 + trim, x1: end as f32 - trim, top: top as f32 });
             }
-            // Rounded corners: keep a little in from both ends.
-            let trim = 3.0f32.min(len as f32 / 4.0);
-            out.push(Segment { x0: start as f32 + trim, x1: end as f32 - trim, top });
         }
         x = end;
     }
@@ -101,4 +100,18 @@ pub fn segments(s: &Strip) -> Vec<Segment> {
     } else {
         Vec::new()
     }
+}
+
+/// Is there a vertical edge at both ends of the run, just below its top? (Ends at the strip's own edge count.)
+fn closed_ends(s: &Strip, start: usize, end: usize, top: usize) -> bool {
+    let side = |inside: usize, outside: Option<usize>| -> bool {
+        let Some(out) = outside else { return true };
+        let rows = (top + 2)..(top + 9).min(s.h);
+        let total = rows.len();
+        let hits = rows.filter(|&r| diff(s.px(inside, r), s.px(out, r)) >= EDGE).count();
+        total == 0 || hits * 2 >= total.min(4)
+    };
+    let left_out = (start >= 2).then(|| start - 2);
+    let right_out = (end + 2 <= s.w).then(|| end + 1).filter(|&x| x < s.w);
+    side((start + 1).min(s.w - 1), left_out) && side(end.saturating_sub(2), right_out)
 }

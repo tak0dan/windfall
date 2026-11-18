@@ -1,5 +1,6 @@
-//! A dense lawn of tiny flowers along the top edge of a surface. They sway when the cursor brushes them and
-//! stretch up while it stays; once it leaves they settle back to their own height.
+//! A thick lawn along the top edge of a surface: grass fills every gap and tiny flowers of mixed sizes sit
+//! shoulder to shoulder in it. They sway when the cursor brushes them, stretch up while it stays and settle
+//! back afterwards; a small yellow glow marks where they are being played with.
 
 use super::Surf;
 use crate::draw::Batch;
@@ -27,53 +28,86 @@ pub struct Flower {
     hidden: bool,
 }
 
+struct Blade {
+    hidden: bool,
+    x: f32,
+    h: f32,
+    tint: f32,
+    lean: f32,
+}
+
 pub struct Bed {
     pub x0: f32,
     pub base: f32,
     span: f32,
     flowers: Vec<Flower>,
+    grass: Vec<Blade>,
     spawn_acc: f32,
+    age: f32,
+    cursor: Option<[f32; 2]>,
+    glow: f32,
+    glow_at: [f32; 2],
 }
 
 impl Bed {
-    pub fn new(s: &Surf) -> Bed {
-        Bed { x0: s.rect.x + s.inset, base: s.rect.y, span: (s.rect.w - 2.0 * s.inset).max(0.0), flowers: Vec::new(), spawn_acc: 0.0 }
+    pub fn new(s: &Surf, rng: &mut Rng) -> Bed {
+        let mut b = Bed { x0: s.rect.x + s.inset, base: s.rect.y, span: (s.rect.w - 2.0 * s.inset).max(0.0), flowers: Vec::new(), grass: Vec::new(), spawn_acc: 0.0, age: 0.0, cursor: None, glow: 0.0, glow_at: [0.0; 2] };
+        b.sow(rng);
+        b
+    }
+
+    /// Grass: a blade about every pixel and a quarter.
+    fn sow(&mut self, rng: &mut Rng) {
+        let want = (self.span / 1.25) as usize;
+        while self.grass.len() < want {
+            self.grass.push(Blade { hidden: false, x: self.x0 + rng.f() * self.span, h: rng.range(4.0, 11.0), tint: rng.f(), lean: rng.range(-1.0, 1.0) });
+        }
+        self.grass.truncate(want);
     }
 
     /// The surface moved or resized: the lawn goes with it, losing what no longer fits.
-    pub fn follow(&mut self, s: &Surf) {
+    pub fn follow(&mut self, s: &Surf, rng: &mut Rng) {
         let (lo, hi) = (s.rect.x + s.inset, s.rect.right() - s.inset);
         let dx = lo - self.x0;
         if dx != 0.0 {
             for f in &mut self.flowers {
                 f.x += dx;
             }
+            for g in &mut self.grass {
+                g.x += dx;
+            }
         }
         self.x0 = lo;
         self.span = (hi - lo).max(0.0);
         self.base = s.rect.y;
         self.flowers.retain(|f| f.x >= lo && f.x <= hi);
+        self.grass.retain(|g| g.x >= lo && g.x <= hi);
+        self.sow(rng);
     }
 
-    pub fn step(&mut self, dt: f32, intensity: f32, inset: f32, cursor: Option<[f32; 2]>, rng: &mut Rng, hidden_at: &dyn Fn(f32) -> bool) {
-        let _ = inset;
+    pub fn step(&mut self, dt: f32, intensity: f32, cursor: Option<[f32; 2]>, rng: &mut Rng, hidden_at: &dyn Fn(f32) -> bool) {
+        self.age += dt;
+        self.cursor = cursor;
         let width = self.span;
-        let cap = (width * (0.08 + 0.34 * intensity)) as usize;
-        // The lawn fills in over roughly twenty seconds.
+        // Full lawn: heads overlap, grass shows only underneath.
+        let cap = (width * (0.2 + 0.5 * intensity)) as usize;
+        // It fills in over roughly twenty seconds.
         self.spawn_acc += dt * cap as f32 / 20.0;
         while self.spawn_acc >= 1.0 {
             self.spawn_acc -= 1.0;
             if self.flowers.len() < cap {
                 let x = self.x0 + rng.f() * width;
-                if !self.flowers.iter().any(|f| (f.x - x).abs() < 1.8) {
-                    self.flowers.push(new_flower(x, rng));
-                }
+                self.flowers.push(new_flower(x, rng));
             }
         }
+        for g in &mut self.grass {
+            g.hidden = hidden_at(g.x);
+        }
+        let mut touched_any = false;
         for f in &mut self.flowers {
             f.hidden = hidden_at(f.x);
             if intensity < 0.01 {
-                f.h -= 6.0 * dt;
+                f.h -= 8.0 * dt;
                 continue;
             }
             if f.h < f.hmax {
@@ -85,29 +119,54 @@ impl Bed {
             if let Some(c) = cursor {
                 let head_y = self.base - total;
                 let dx = c[0] - f.x;
-                if dx.abs() < 24.0 && c[1] > head_y - 28.0 && c[1] < self.base + 10.0 {
+                if dx.abs() < 34.0 && c[1] > head_y - 40.0 && c[1] < self.base + 12.0 {
                     touched = true;
-                    push = (-dx * 0.25).clamp(-5.0, 5.0);
+                    push = (-dx * 0.3).clamp(-8.0, 8.0);
                 }
             }
             if touched {
+                touched_any = true;
                 f.excite = (f.excite + dt * 5.0).min(1.0);
                 // Reaches up to about twice its height while it is being played with.
-                f.boost = (f.boost + 9.0 * dt).min(f.hmax * 1.1);
+                f.boost = (f.boost + 18.0 * dt).min(f.hmax * 1.1);
             } else {
                 f.excite = (f.excite - dt * 2.0).max(0.0);
-                f.boost = (f.boost - 7.0 * dt).max(0.0);
+                f.boost = (f.boost - 14.0 * dt).max(0.0);
             }
-            let target = push * f.excite * (total / 8.0).min(1.5);
+            let target = push * f.excite * (total / 14.0).min(1.5);
             f.bend += (target - f.bend) * (1.0 - (-dt * 12.0).exp());
         }
         self.flowers.retain(|f| f.h > 0.3);
+        if let (true, Some(c)) = (touched_any, cursor) {
+            self.glow = (self.glow + dt * 6.0).min(1.0);
+            self.glow_at = [c[0], c[1].clamp(self.base - 44.0, self.base - 2.0)];
+        } else {
+            self.glow = (self.glow - dt * 3.0).max(0.0);
+        }
     }
 
     pub fn draw(&self, b: &mut Batch, pixel_size: f32) {
+        let grow = (self.age / 10.0).min(1.0);
+        let gw = if pixel_size > 0.0 { pixel_size * 0.9 } else { 1.5 };
+        for g in self.grass.iter().filter(|g| !g.hidden) {
+            let sway = match self.cursor {
+                Some(c) if (g.x - c[0]).abs() < 30.0 && c[1] > self.base - 40.0 && c[1] < self.base + 12.0 => -(g.x - c[0]) / 30.0 * 3.5,
+                _ => 0.0,
+            };
+            let h = g.h * (0.3 + 0.7 * grow);
+            let col = palette::mix([0.18, 0.5, 0.2], [0.42, 0.74, 0.28], g.tint);
+            b.tri([g.x - gw * 0.5, self.base + 1.0], [g.x + gw * 0.5, self.base + 1.0], [g.x + g.lean * 1.2 + sway, self.base - h], [col[0], col[1], col[2], 1.0]);
+        }
         for f in &self.flowers {
             if !f.hidden {
                 f.draw(b, self.base, pixel_size);
+            }
+        }
+        if self.glow > 0.02 {
+            // A warm yellow halo in rings: soft when smooth, stepped when pixel art.
+            let [gx, gy] = self.glow_at;
+            for (k, r) in [38.0f32, 30.0, 23.0, 16.0, 10.0].iter().enumerate() {
+                b.disc(gx, gy, *r, [1.0, 0.9, 0.3, self.glow * (0.05 + 0.012 * k as f32)]);
             }
         }
     }
@@ -116,18 +175,20 @@ impl Bed {
 fn new_flower(x: f32, rng: &mut Rng) -> Flower {
     let hue = rng.f();
     let col = palette::hsv(hue, rng.range(0.45, 0.95), rng.range(0.9, 1.0));
+    // Each one is between 60% and 100% of full size.
+    let scale = rng.range(0.6, 1.0);
     Flower {
         x,
         h: 0.5,
-        hmax: rng.range(4.5, 12.0),
-        rate: rng.range(0.8, 2.2),
+        hmax: rng.range(9.0, 24.0) * scale,
+        rate: rng.range(1.6, 4.4),
         boost: 0.0,
         kind: rng.below(5) as u8,
         col,
         center: if rng.chance(0.7) { [1.0, 0.85, 0.25] } else { palette::mix(col, [1.0, 1.0, 1.0], 0.6) },
         stem: palette::mix(palette::STEM, [0.55, 0.85, 0.35], rng.f() * 0.7),
         petals: 5 + rng.below(3) as u8,
-        size: rng.range(1.0, 1.9),
+        size: rng.range(2.0, 3.8) * scale,
         phase: rng.f() * 6.28,
         bend: 0.0,
         excite: 0.0,
@@ -151,18 +212,18 @@ impl Flower {
             [u * u * self.x + 2.0 * u * t * ctrl[0] + t * t * head[0], u * u * base + 2.0 * u * t * ctrl[1] + t * t * head[1]]
         };
         let sc = [self.stem[0], self.stem[1], self.stem[2], 1.0];
-        // One art pixel wide in the pixel renderer, a fine hairline otherwise.
-        let width = if pixel_size > 0.0 { pixel_size } else { 0.8 };
-        let segs = if h < 6.0 { 2 } else { 4 };
+        // One art pixel wide in the pixel renderer, a fine line otherwise.
+        let width = if pixel_size > 0.0 { pixel_size } else { 1.3 };
+        let segs = if h < 10.0 { 2 } else { 4 };
         let mut prev = at(0.0);
         for i in 1..=segs {
             let p = at(i as f32 / segs as f32);
             b.line(prev, p, width, sc);
             prev = p;
         }
-        if h > 6.0 {
+        if h > 10.0 {
             let l = at(0.45);
-            let s = 1.0 + h * 0.07;
+            let s = 1.6 + h * 0.07;
             b.ellipse(l[0] + self.leaf_side * s * 0.8, l[1] - s * 0.2, s * 0.9, s * 0.4, -self.leaf_side * 0.6, sc);
         }
         let bloom = smooth(0.3, 0.85, self.h / self.hmax.max(1.0));

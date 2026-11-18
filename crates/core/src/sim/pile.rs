@@ -110,7 +110,7 @@ impl Pile {
         }
     }
     /// The cursor ploughs through: removes height near it and reports what to throw.
-    pub fn disturb(&mut self, c: [f32; 2], r: f32, amount: f32) -> Vec<(f32, f32, u8, f32)> {
+    pub fn disturb(&mut self, c: [f32; 2], r: f32, amount: f32) -> Vec<(f32, f32, u8, f32, f32)> {
         let mut out = Vec::new();
         let n = self.h.len();
         let lo = ((c[0] - r - self.x0) / CELL).floor().max(0.0) as usize;
@@ -127,7 +127,7 @@ impl Pile {
             if take > 0.05 {
                 self.h[i] -= take;
                 if out.len() < 60 && (take > 0.3 || i % 2 == 0) {
-                    out.push((x, top, self.c[i], if dx >= 0.0 { 1.0 } else { -1.0 }));
+                    out.push((x, top, self.c[i], if dx >= 0.0 { 1.0 } else { -1.0 }, take));
                 }
             }
         }
@@ -154,6 +154,10 @@ impl Pile {
             }
             let top = [col[0], col[1], col[2], 1.0];
             let deep = if effect == Effect::Snow { [0.80, 0.88, 0.97, 1.0] } else { [col[0] * 0.7, col[1] * 0.7, col[2] * 0.7, 1.0] };
+            if effect != Effect::Snow {
+                self.draw_litter(b, i, x, h0, h1, colors);
+                continue;
+            }
             let (y0, y1) = (self.base - h0, self.base - h1);
             // Slightly below the surface edge so no seam shows between pile and the thing it sits on.
             let by = self.base + 1.0;
@@ -163,5 +167,29 @@ impl Pile {
                 b.quad4([[x, y0], [x + CELL, y1], [x, by], [x + CELL, by]], [top, top, deep, deep]);
             }
         }
+    }
+
+    /// Leaves and petals lie in a heap: bands of mixed colour, so no column reads as a vertical stripe.
+    fn draw_litter(&self, b: &mut Batch, i: usize, x: f32, h0: f32, h1: f32, colors: &[[f32; 3]]) {
+        const BAND: f32 = 3.5;
+        let n = colors.len();
+        let hash = |i: usize, j: usize| ((i.wrapping_mul(73_856_093) ^ j.wrapping_mul(19_349_663)).wrapping_mul(2_654_435_761) >> 9) as usize;
+        let shade = |j: usize, depth: f32| {
+            let k = hash(i, j);
+            let c = colors[(self.c[i] as usize + k % 3) % n];
+            let f = (1.0 - 0.34 * depth) * (0.9 + 0.1 * ((k >> 4) % 3) as f32);
+            [c[0] * f, c[1] * f, c[2] * f, 1.0]
+        };
+        let top_h = h0.min(h1);
+        let full = (top_h / BAND).floor() as usize;
+        let total = h0.max(h1).max(1.0);
+        for k in 0..full {
+            let (yb, yt) = (self.base + 1.0 - k as f32 * BAND, self.base - (k + 1) as f32 * BAND);
+            let col = shade(k, (k as f32 * BAND) / total);
+            b.quad4([[x, yt], [x + CELL, yt], [x, yb], [x + CELL, yb]], [col; 4]);
+        }
+        let yb = self.base + 1.0 - full as f32 * BAND;
+        let col = shade(full, (full as f32 * BAND) / total);
+        b.quad4([[x, self.base - h0], [x + CELL, self.base - h1], [x, yb], [x + CELL, yb]], [col; 4]);
     }
 }

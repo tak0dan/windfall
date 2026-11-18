@@ -140,8 +140,8 @@ fn touched_flowers_stop_growing_at_a_limit() {
     let mut b = Batch::default();
     w.draw(&mut b, &p);
     let min_y = b.data.chunks(8).map(|v| v[1]).fold(f32::MAX, f32::min);
-    // Tiny flowers: even stretched, well under 40px above the surface at y=300.
-    assert!(min_y > 300.0 - 40.0, "a flower reached y={min_y}");
+    // Even stretched, a flower (and the glow around it) stays within ~90px of the surface at y=300.
+    assert!(min_y > 300.0 - 90.0, "a flower reached y={min_y}");
 }
 
 mod shape {

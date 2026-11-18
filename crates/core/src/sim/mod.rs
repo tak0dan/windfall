@@ -76,6 +76,8 @@ struct P {
     /// Thrown/dropped things fall under gravity instead of drifting.
     heavy: bool,
     life: f32,
+    /// How much pile it carries when it lands; zero means the usual amount for its size.
+    mass: f32,
 }
 
 /// A pile that is coming apart: carried along by a moving window, or left behind by a closed one.
@@ -183,10 +185,11 @@ impl World {
                 }
             }
         }
+        let rng = &mut self.rng;
         self.flowers.retain(|id, bed| match scene.surfs.iter().find(|s| s.id == *id) {
             None => false,
             Some(s) => {
-                bed.follow(s);
+                bed.follow(s, rng);
                 true
             }
         });
@@ -205,7 +208,8 @@ impl World {
                 for _ in 0..n {
                     let x = pile.x0 + (i as f32 + self.rng.f()) * pile::CELL;
                     let y = pile.base - h * self.rng.f();
-                    let c = self.chunk(x, y, pile.c[i]);
+                    let mut c = self.chunk(x, y, pile.c[i]);
+                    c.mass = h / n as f32;
                     self.parts.push(c);
                 }
             }
@@ -226,6 +230,7 @@ impl World {
             col,
             heavy: true,
             life: 0.0,
+            mass: 0.0,
         }
     }
 
@@ -244,7 +249,8 @@ impl World {
                     for _ in 0..n {
                         let x = sh.pile.x0 + (i as f32 + self.rng.f()) * pile::CELL;
                         let y = sh.pile.base - h * self.rng.f();
-                        let c = self.chunk(x, y, sh.pile.c[i]);
+                        let mut c = self.chunk(x, y, sh.pile.c[i]);
+                        c.mass = h / n as f32;
                         self.parts.push(c);
                     }
                     sh.pile.h[i] = 0.0;
@@ -310,17 +316,17 @@ impl World {
             let part = match p.effect {
                 Effect::Snow => {
                     let size = self.rng.range(1.2, 3.4);
-                    P { kind: Kind::Flake, x, y: -8.0, vx: 0.0, vy: 22.0 + size * 14.0, size, phase: self.rng.f() * 6.28, spin: 0.0, col, heavy: false, life: 0.0 }
+                    P { kind: Kind::Flake, x, y: -8.0, vx: 0.0, vy: 22.0 + size * 14.0, size, phase: self.rng.f() * 6.28, spin: 0.0, col, heavy: false, life: 0.0 , mass: 0.0 }
                 }
                 Effect::Leaves => {
                     let size = self.rng.range(4.0, 7.0);
-                    P { kind: Kind::Flake, x, y: -12.0, vx: 0.0, vy: self.rng.range(35.0, 60.0), size, phase: self.rng.f() * 6.28, spin: self.rng.range(-2.5, 2.5), col, heavy: false, life: 0.0 }
+                    P { kind: Kind::Flake, x, y: -12.0, vx: 0.0, vy: self.rng.range(35.0, 60.0), size, phase: self.rng.f() * 6.28, spin: self.rng.range(-2.5, 2.5), col, heavy: false, life: 0.0 , mass: 0.0 }
                 }
                 Effect::Blossom => {
                     let size = self.rng.range(2.5, 4.5);
-                    P { kind: Kind::Flake, x, y: -10.0, vx: 0.0, vy: self.rng.range(28.0, 50.0), size, phase: self.rng.f() * 6.28, spin: self.rng.range(-3.0, 3.0), col, heavy: false, life: 0.0 }
+                    P { kind: Kind::Flake, x, y: -10.0, vx: 0.0, vy: self.rng.range(28.0, 50.0), size, phase: self.rng.f() * 6.28, spin: self.rng.range(-3.0, 3.0), col, heavy: false, life: 0.0 , mass: 0.0 }
                 }
-                _ => P { kind: Kind::Streak, x, y: -20.0, vx: 0.0, vy: self.rng.range(620.0, 900.0), size: self.rng.range(7.0, 14.0), phase: 0.0, spin: 0.0, col, heavy: false, life: 0.0 },
+                _ => P { kind: Kind::Streak, x, y: -20.0, vx: 0.0, vy: self.rng.range(620.0, 900.0), size: self.rng.range(7.0, 14.0), phase: 0.0, spin: 0.0, col, heavy: false, life: 0.0 , mass: 0.0 },
             };
             self.parts.push(part);
         }
@@ -408,7 +414,7 @@ impl World {
             if let Some((id, top)) = best {
                 if accumulate {
                     let col = q.col;
-                    let amt = (q.size * q.size).sqrt() * if p.effect == Effect::Snow { 0.64 } else { 1.0 };
+                    let amt = if q.mass > 0.0 { q.mass.min(4.0) } else { (q.size * q.size).sqrt() * if p.effect == Effect::Snow { 0.64 } else { 1.0 } };
                     if let Some(s) = self.scene.surfs.iter().find(|s| s.id == id) {
                         let (x0, wd, base) = (s.rect.x + s.inset, (s.rect.w - 2.0 * s.inset).max(0.0), s.rect.y);
                         let cap = if s.kind == SurfKind::Ground { 46.0 } else { 20.0 };
@@ -432,6 +438,7 @@ impl World {
                                 col: q.col,
                                 heavy: true,
                                 life: self.rng.range(0.15, 0.32),
+                                mass: 0.0,
                             });
                         }
                     }
@@ -457,7 +464,7 @@ impl World {
             }
             if let Some(c) = cursor {
                 let thrown = pile.disturb(c, 38.0, (speed * dt * 0.02).min(3.0));
-                for (x, y, col, away) in thrown {
+                for (x, y, col, away, take) in thrown {
                     if spawned.len() < 120 && self.parts.len() + spawned.len() < MAX_PARTS {
                         spawned.push(P {
                             kind: Kind::Flake,
@@ -471,6 +478,8 @@ impl World {
                             col,
                             heavy: true,
                             life: 0.0,
+                            // What the cursor ploughed up lands somewhere else; nothing is added.
+                            mass: take.max(0.05),
                         });
                     }
                 }
@@ -492,8 +501,8 @@ impl World {
                 continue;
             }
             let hidden_at = |x: f32| s.kind != SurfKind::Ground && self.scene.surfs.iter().any(|o| o.id != s.id && o.z > s.z && o.rect.contains(x, s.rect.y + 2.0));
-            let bed = self.flowers.entry(s.id).or_insert_with(|| flowers::Bed::new(s));
-            bed.step(dt, p.intensity, s.inset, cursor, &mut self.rng, &hidden_at);
+            let bed = self.flowers.entry(s.id).or_insert_with(|| flowers::Bed::new(s, &mut self.rng));
+            bed.step(dt, p.intensity, cursor, &mut self.rng, &hidden_at);
         }
     }
 
