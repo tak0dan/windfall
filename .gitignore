@@ -1,1 +1,6 @@
 target/
+packaging/src/
+packaging/pkg/
+packaging/*.pkg.tar.*
+packaging/aur/src/
+packaging/aur/pkg/
