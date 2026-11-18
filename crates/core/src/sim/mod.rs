@@ -106,6 +106,8 @@ pub struct World {
     /// Blue puffs of what lost the ground under it.
     puffs: Vec<Puff>,
     flowers: HashMap<u64, flowers::Bed>,
+    /// Lawns whose surface is gone, finishing their goodbye.
+    orphans: Vec<flowers::Bed>,
     rng: Rng,
     time: f32,
     spawn_acc: f32,
@@ -125,6 +127,7 @@ impl World {
             sheds: Vec::new(),
             puffs: Vec::new(),
             flowers: HashMap::new(),
+            orphans: Vec::new(),
             rng: Rng::new(seed),
             time: 0.0,
             spawn_acc: 0.0,
@@ -216,24 +219,19 @@ impl World {
                 }
             }
         }
-        // Flowers whose ground vanished (a bar that shrank or went away) puff into blue sparks.
-        let mut lost: Vec<[f32; 2]> = Vec::new();
+        // Lawns follow their surface; a lawn whose surface is gone leaves in an orderly wave.
         let rng = &mut self.rng;
-        self.flowers.retain(|id, bed| match scene.surfs.iter().find(|s| s.id == *id) {
-            None => {
-                lost.extend(bed.heads());
-                false
+        let mut gone: Vec<u64> = Vec::new();
+        for (id, bed) in self.flowers.iter_mut() {
+            match scene.surfs.iter().find(|s| s.id == *id) {
+                None => gone.push(*id),
+                Some(s) => bed.update(s, rng),
             }
-            Some(s) => {
-                lost.extend(bed.follow(s, rng));
-                true
-            }
-        });
-        for h in lost.into_iter().take(400) {
-            for _ in 0..5 {
-                let a = self.rng.range(0.0, std::f32::consts::TAU);
-                let v = self.rng.range(10.0, 46.0);
-                self.puffs.push(Puff { x: h[0], y: h[1], vx: a.cos() * v, vy: a.sin() * v - 16.0, life: self.rng.range(0.4, 0.85) });
+        }
+        for id in gone {
+            if let Some(mut bed) = self.flowers.remove(&id) {
+                bed.abandon();
+                self.orphans.push(bed);
             }
         }
         self.scene = scene;
@@ -329,8 +327,9 @@ impl World {
         self.puffs.retain(|pf| pf.life > 0.0);
         if p.effect == Effect::Flowers {
             self.flowers_step(dt, p);
-        } else if !self.flowers.is_empty() {
+        } else if !self.flowers.is_empty() || !self.orphans.is_empty() {
             self.flowers.clear();
+            self.orphans.clear();
         }
     }
 
@@ -542,6 +541,7 @@ impl World {
 
     fn flowers_step(&mut self, dt: f32, p: &Params) {
         let cursor = if p.interact { self.scene.cursor } else { None };
+        let mut puffs: Vec<[f32; 2]> = Vec::new();
         for s in &self.scene.surfs {
             let usable = match s.kind {
                 SurfKind::Ground => p.ground,
@@ -553,7 +553,24 @@ impl World {
             }
             let hidden_at = |x: f32| s.kind != SurfKind::Ground && self.scene.surfs.iter().any(|o| o.id != s.id && o.z > s.z && o.rect.contains(x, s.rect.y + 2.0));
             let bed = self.flowers.entry(s.id).or_insert_with(|| flowers::Bed::new(s, &mut self.rng));
-            bed.step(dt, p.intensity, cursor, &mut self.rng, &hidden_at);
+            let lost = bed.step(dt, p.intensity, cursor, &mut self.rng, &hidden_at);
+            puffs.extend(lost);
+        }
+            for bed in &mut self.orphans {
+            puffs.extend(bed.step(dt, p.intensity, None, &mut self.rng, &|_| false));
+        }
+        self.orphans.retain(|b| !b.is_empty());
+        for h in puffs.into_iter().take(400) {
+            self.puff_at(h);
+        }
+    }
+
+    /// A little blue burst where a flower lost its ground.
+    fn puff_at(&mut self, h: [f32; 2]) {
+        for _ in 0..5 {
+            let a = self.rng.range(0.0, std::f32::consts::TAU);
+            let v = self.rng.range(10.0, 46.0);
+            self.puffs.push(Puff { x: h[0], y: h[1], vx: a.cos() * v, vy: a.sin() * v - 16.0, life: self.rng.range(0.4, 0.85) });
         }
     }
 
@@ -569,6 +586,9 @@ impl World {
             if self.scene.surfs.iter().any(|s| s.id == *id && s.shown) {
                 bed.draw(b, p.pixel_size, p.glow);
             }
+        }
+        for bed in &self.orphans {
+            bed.draw(b, p.pixel_size, p.glow);
         }
         for pf in &self.puffs {
             b.disc(pf.x, pf.y, if p.pixel_size > 0.0 { p.pixel_size * 0.6 } else { 1.0 }, [0.35, 0.62, 1.0, (pf.life * 2.5).clamp(0.0, 1.0)]);

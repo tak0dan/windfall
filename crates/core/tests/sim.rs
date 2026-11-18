@@ -241,9 +241,18 @@ fn flowers_on_a_lost_stretch_puff_away() {
     let p = params(Effect::Flowers);
     run(&mut w, &p, 30.0);
     w.set_scene(bar(300.0));
+    // Nothing goes at once: the ground has to stay missing for a moment first.
     let mut b = Batch::default();
     w.draw(&mut b, &p);
+    let blue = |b: &Batch| b.data.chunks(8).filter(|v| (v[4] - 0.35).abs() < 1e-3 && (v[5] - 0.62).abs() < 1e-3 && (v[6] - 1.0).abs() < 1e-3).count();
+    assert_eq!(blue(&b), 0, "went too early");
+    let mut seen = 0;
+    for _ in 0..(3 * 60) {
+        w.step(1.0 / 60.0, &p);
+        b.clear();
+        w.draw(&mut b, &p);
+        seen = seen.max(blue(&b));
+    }
     // Blue puffs are drawn with colour (0.35, 0.62, 1.0).
-    let blue = b.data.chunks(8).filter(|v| (v[4] - 0.35).abs() < 1e-3 && (v[5] - 0.62).abs() < 1e-3 && (v[6] - 1.0).abs() < 1e-3).count();
-    assert!(blue > 0, "no puffs");
+    assert!(seen > 0, "no puffs");
 }

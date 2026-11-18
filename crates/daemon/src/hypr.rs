@@ -141,6 +141,8 @@ fn style() -> Style {
 #[derive(Default)]
 struct Cache {
     tick: u64,
+    /// Windows are being moved or resized right now: read them on every tick.
+    fast: bool,
     monitors: Vec<Monitor>,
     clients: Vec<Client>,
     layers: std::collections::HashMap<String, LayerMonitor>,
@@ -148,7 +150,7 @@ struct Cache {
 
 fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<[f32; 2]>)> {
     // The pointer is read every tick; the window list a few times a second less.
-    if cache.tick % 3 == 0 || cache.monitors.is_empty() {
+    if cache.tick % 3 == 0 || cache.fast || cache.monitors.is_empty() {
         cache.monitors = json("j/monitors")?;
         cache.clients = json("j/clients").unwrap_or_default();
     }
@@ -192,6 +194,7 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
                 shown: on_screen,
             });
         }
+        let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         if let Some(lm) = layers.get(&m.name) {
             for (level, list) in &lm.levels {
                 if !matches!(level.as_str(), "1" | "2" | "3") {
@@ -210,7 +213,9 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
                     if y + l.h as f32 >= h - 2.0 && l.w as f32 > w * 0.5 {
                         bottom_bar = true;
                     }
-                    surfs.push(Surf { id: hash(&format!("{}{}{}{}", l.namespace, l.x, l.y, l.w), 11), rect: Rect::new(x, y, l.w as f32, l.h as f32), z: 1000, kind: SurfKind::Layer, inset: 4.0, shown: true });
+                    let nth = seen.entry(l.namespace.clone()).or_insert(0usize);
+                    *nth += 1;
+                    surfs.push(Surf { id: hash(&format!("{}/{}/{}", m.name, l.namespace, *nth), 11), rect: Rect::new(x, y, l.w as f32, l.h as f32), z: 1000, kind: SurfKind::Layer, inset: 4.0, shown: true });
                 }
             }
         }
@@ -239,6 +244,7 @@ pub fn spawn(mut send: impl FnMut(Snapshot) -> bool + Send + 'static, awake: std
             let mut style = style();
             let mut cache = Cache::default();
             let mut last_style = Instant::now();
+            let mut last_change = Instant::now();
             let mut last: Option<Vec<(String, Vec<Surf>, Option<[f32; 2]>, bool)>> = None;
             loop {
                 if !awake.load(std::sync::atomic::Ordering::Relaxed) {
@@ -249,9 +255,14 @@ pub fn spawn(mut send: impl FnMut(Snapshot) -> bool + Send + 'static, awake: std
                     style = self::style();
                     last_style = Instant::now();
                 }
+                cache.fast = last_change.elapsed() < Duration::from_millis(500);
                 if let Some((snap, _)) = snapshot(&style, &mut cache) {
                     let key: Vec<_> = snap.monitors.iter().map(|m| (m.name.clone(), m.scene.surfs.clone(), m.scene.cursor, m.fullscreen)).collect();
                     if last.as_ref() != Some(&key) {
+                        // Only geometry counts, not the pointer.
+                        if last.as_ref().map_or(true, |l| l.iter().map(|m| (&m.0, &m.1, m.3)).ne(key.iter().map(|m| (&m.0, &m.1, m.3)))) {
+                            last_change = Instant::now();
+                        }
                         last = Some(key);
                         if !send(snap) {
                             return;

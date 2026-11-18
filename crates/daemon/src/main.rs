@@ -74,6 +74,9 @@ struct App {
     scenes: HashMap<String, (Scene, bool)>,
     /// What each bar layer turned out to look like; `None` means it could not be examined.
     masks: HashMap<u64, Option<Vec<shape::Segment>>>,
+    /// The ids given to a layer's painted parts last time, so a part that merely resized keeps its identity.
+    seg_ids: HashMap<u64, Vec<(u64, f32, f32)>>,
+    next_seg: u64,
     calibration: HashMap<String, Calibration>,
     /// Bar rectangles per monitor that are kept bare while they are being photographed.
     bare: HashMap<String, Vec<[i32; 4]>>,
@@ -290,16 +293,41 @@ impl App {
                     // Could not be examined: the whole rectangle is the best guess.
                     Some(None) => surfs.push(s.clone()),
                     Some(Some(segs)) => {
-                        for (i, g) in segs.iter().enumerate() {
+                        // Match each painted part to one seen before (by overlap) so that a part which only
+                        // grew or shrank a little stays the same part, with its lawn and its snow.
+                        let prev = self.seg_ids.get(&s.id).cloned().unwrap_or_default();
+                        let mut used = vec![false; prev.len()];
+                        let mut now: Vec<(u64, f32, f32)> = Vec::new();
+                        for g in segs.iter() {
+                            let (a0, a1) = (s.rect.x + g.x0, s.rect.x + g.x1);
+                            let mut best: Option<(usize, f32)> = None;
+                            for (k, (_, p0, p1)) in prev.iter().enumerate() {
+                                let ov = (a1.min(*p1) - a0.max(*p0)).max(0.0);
+                                if !used[k] && ov >= 0.4 * (a1 - a0).min(p1 - p0) && best.map_or(true, |(_, b)| ov > b) {
+                                    best = Some((k, ov));
+                                }
+                            }
+                            let id = match best {
+                                Some((k, _)) => {
+                                    used[k] = true;
+                                    prev[k].0
+                                }
+                                None => {
+                                    self.next_seg += 1;
+                                    (s.id ^ self.next_seg.wrapping_mul(0x9E37_79B9_7F4A_7C15)) | 1
+                                }
+                            };
+                            now.push((id, a0, a1));
                             surfs.push(Surf {
-                                id: s.id.wrapping_mul(31).wrapping_add(i as u64 + 1),
-                                rect: Rect::new(s.rect.x + g.x0, s.rect.y + g.top, g.x1 - g.x0, (s.rect.h - g.top).max(1.0)),
+                                id,
+                                rect: Rect::new(a0, s.rect.y + g.top, a1 - a0, (s.rect.h - g.top).max(1.0)),
                                 z: s.z,
                                 kind: SurfKind::Layer,
                                 inset: 2.0,
                                 shown: true,
                             });
                         }
+                        self.seg_ids.insert(s.id, now);
                     }
                 }
             }
@@ -564,6 +592,8 @@ fn main() {
         config,
         scenes: HashMap::new(),
         masks: HashMap::new(),
+        seg_ids: HashMap::new(),
+        next_seg: 1,
         calibration: HashMap::new(),
         bare: HashMap::new(),
         send: tx.clone(),
