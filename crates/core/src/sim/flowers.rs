@@ -118,6 +118,7 @@ impl Span {
 }
 
 pub struct Bed {
+    kind: SurfKind,
     spans: Vec<Span>,
     /// Where an orphaned lawn's goodbye wave ends.
     edge: f32,
@@ -138,12 +139,13 @@ pub struct Bed {
 
 impl Bed {
     pub fn new(s: &Surf, rng: &mut Rng) -> Bed {
-        Bed::empty(vec![Span::of(s)], rng)
+        Bed::empty(s.kind, vec![Span::of(s)], rng)
     }
 
-    fn empty(spans: Vec<Span>, rng: &mut Rng) -> Bed {
+    fn empty(kind: SurfKind, spans: Vec<Span>, rng: &mut Rng) -> Bed {
         let edge = spans.iter().map(|s| s.left).fold(f32::MAX, f32::min);
         let mut b = Bed {
+            kind,
             spans,
             edge,
             flowers: Vec::new(),
@@ -199,6 +201,7 @@ impl Bed {
     /// filled with grown flowers on the spot, so no bare stretch is ever seen.
     pub fn update(&mut self, s: &Surf, rng: &mut Rng) {
         let old = self.spans.first().cloned();
+        self.kind = s.kind;
         self.spans = vec![Span::of(s)];
         self.edge = s.rect.x;
         if let Some(o) = old {
@@ -265,7 +268,24 @@ impl Bed {
         }
     }
 
-    /// The surface is gone: what stood on it leaves, right to left.
+    /// A whole window is gone (not just a part of a bar): its lawn is gone with it, at once. Returns the heads
+    /// of a sample of the flowers, for a few quiet puffs.
+    pub fn vanish(&mut self) -> Vec<[f32; 2]> {
+        let heads = self.flowers.iter().enumerate().filter(|(i, f)| i % 4 == 0 && !f.hidden && f.h > 2.0).map(|(_, f)| [f.x + f.bend, f.root - f.h - f.boost]).collect();
+        self.flowers.clear();
+        self.grass.clear();
+        self.sparks.clear();
+        self.orphan = true;
+        self.spans.clear();
+        heads
+    }
+
+    /// Is this the lawn of a window (or the screen's edge) rather than a part of a bar?
+    pub fn is_bar_part(&self) -> bool {
+        self.kind == SurfKind::Layer
+    }
+
+    /// A part of a bar is gone: what stood on it leaves, right to left.
     pub fn abandon(&mut self) {
         if let Some(l) = self.spans.iter().map(|s| s.left).reduce(f32::min) {
             self.edge = l;

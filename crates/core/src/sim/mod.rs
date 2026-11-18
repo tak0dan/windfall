@@ -257,11 +257,21 @@ impl World {
                 Some(s) => bed.update(s, rng),
             }
         }
+        let mut quiet: Vec<[f32; 2]> = Vec::new();
         for id in gone {
             if let Some(mut bed) = self.flowers.remove(&id) {
-                bed.abandon();
-                self.orphans.push(bed);
+                if bed.is_bar_part() {
+                    // A part of a bar went away: its flowers leave in a wave.
+                    bed.abandon();
+                    self.orphans.push(bed);
+                } else {
+                    // A window closed: its lawn goes at once, with only a few quiet puffs.
+                    quiet.extend(bed.vanish());
+                }
             }
+        }
+        for h in quiet.into_iter().take(60) {
+            self.puff_at(h);
         }
         self.scene = scene;
     }
@@ -598,10 +608,10 @@ impl World {
 
     /// A little blue burst where a flower lost its ground.
     fn puff_at(&mut self, h: [f32; 2]) {
-        for _ in 0..5 {
+        for _ in 0..2 {
             let a = self.rng.range(0.0, std::f32::consts::TAU);
-            let v = self.rng.range(10.0, 46.0);
-            self.puffs.push(Puff { x: h[0], y: h[1], vx: a.cos() * v, vy: a.sin() * v - 16.0, life: self.rng.range(0.4, 0.85) });
+            let v = self.rng.range(6.0, 26.0);
+            self.puffs.push(Puff { x: h[0], y: h[1], vx: a.cos() * v, vy: a.sin() * v - 10.0, life: self.rng.range(0.3, 0.6) });
         }
     }
 
@@ -622,7 +632,7 @@ impl World {
             bed.draw(b, p.pixel_size, p.glow);
         }
         for pf in &self.puffs {
-            b.disc(pf.x, pf.y, if p.pixel_size > 0.0 { p.pixel_size * 0.6 } else { 1.0 }, [0.35, 0.62, 1.0, (pf.life * 2.5).clamp(0.0, 1.0)]);
+            b.disc(pf.x, pf.y, if p.pixel_size > 0.0 { p.pixel_size * 0.5 } else { 0.8 }, [0.35, 0.62, 1.0, (pf.life * 2.5).clamp(0.0, 1.0) * 0.6]);
         }
         let colors = flake_colors(p.effect);
         for q in &self.parts {

@@ -292,3 +292,22 @@ fn snow_on_a_reshaped_bar_stays_where_another_part_now_covers_it() {
     w.set_scene(scene((100.0, 200.0), (300.0, 420.0)));
     assert!(w.pile_height(2, 350.0) >= at_350 * 0.8, "the snow at 350 was lost though ground is still there");
 }
+
+#[test]
+fn a_closed_window_takes_its_lawn_at_once_with_only_a_few_quiet_puffs() {
+    let mut w = World::new(41);
+    w.set_scene(scene(None));
+    let p = params(Effect::Flowers);
+    run(&mut w, &p, 30.0);
+    let mut s = scene(None);
+    s.surfs.remove(1); // the window closes
+    w.set_scene(s);
+    let mut b = Batch::default();
+    w.step(1.0 / 60.0, &p);
+    w.draw(&mut b, &p);
+    // Nothing of the window's lawn is left on the very next frame: no stems or grass over its top edge.
+    let green = b.data.chunks(8).filter(|v| v[0] > 420.0 && v[0] < 980.0 && v[1] > 280.0 && v[1] < 302.0 && v[5] > v[4] && v[5] > v[6] && v[7] > 0.9).count();
+    assert_eq!(green, 0, "the lawn is still there");
+    let blue = b.data.chunks(8).filter(|v| (v[4] - 0.35).abs() < 1e-3 && (v[5] - 0.62).abs() < 1e-3 && (v[6] - 1.0).abs() < 1e-3).count() / 6;
+    assert!(blue > 0 && blue < 130, "puffs should be there but few: {blue}");
+}
