@@ -1,9 +1,9 @@
 [package]
-name = "snowhushctl"
+name = "windfallctl"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-snowhush-core = { path = "../core" }
+windfall-core = { path = "../core" }
 serde_json.workspace = true

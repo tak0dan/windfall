@@ -1,11 +1,11 @@
 [Desktop Entry]
 Type=Application
-Name=Snowhush Controller
+Name=Windfall Controller
 GenericName=Desktop weather
 Comment=Snow, leaves, blossom, rain or flowers on your Hyprland desktop
-Exec=snowhush-gui
-Icon=snowhush
+Exec=windfall-gui
+Icon=windfall
 Terminal=false
 Categories=Utility;GTK;
 Keywords=snow;weather;rain;flowers;wallpaper;effect;overlay;
-StartupWMClass=io.github.snowhush.Controller
+StartupWMClass=io.github.tak0dan.Windfall

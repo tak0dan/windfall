@@ -1177,53 +1177,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3244542535d5de959d90ec55d1b5ff0fd2bb7b1310223907d5f11932847f7b59"
 
 [[package]]
-name = "snowhush-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "snowhush-gui"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "gtk4",
- "libadwaita",
- "serde_json",
- "snowhush-core",
-]
-
-[[package]]
-name = "snowhushctl"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "snowhush-core",
-]
-
-[[package]]
-name = "snowhushd"
-version = "0.1.0"
-dependencies = [
- "calloop",
- "calloop-wayland-source",
- "glow",
- "khronos-egl",
- "ksni",
- "libc",
- "serde",
- "serde_json",
- "snowhush-core",
- "wayland-client",
- "wayland-egl",
- "wayland-protocols",
- "wayland-protocols-wlr",
-]
-
-[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1585,6 +1538,53 @@ checksum = "d7d179596ff5ec0f6de4db64d54011bde6289cc49603d3a6e4ce3f329207ab88"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "windfall-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "windfall-gui"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "gtk4",
+ "libadwaita",
+ "serde_json",
+ "windfall-core",
+]
+
+[[package]]
+name = "windfallctl"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "windfall-core",
+]
+
+[[package]]
+name = "windfalld"
+version = "0.1.0"
+dependencies = [
+ "calloop",
+ "calloop-wayland-source",
+ "glow",
+ "khronos-egl",
+ "ksni",
+ "libc",
+ "serde",
+ "serde_json",
+ "wayland-client",
+ "wayland-egl",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+ "windfall-core",
 ]
 
 [[package]]

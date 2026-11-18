@@ -1,7 +1,7 @@
-//! The control socket: JSON lines over `$XDG_RUNTIME_DIR/snowhush.sock`.
+//! The control socket: JSON lines over `$XDG_RUNTIME_DIR/windfall.sock`.
 
 use crate::msg::Msg;
-use snowhush_core::ipc::{self, Request, Response};
+use windfall_core::ipc::{self, Request, Response};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
 use std::sync::mpsc;

@@ -1,10 +1,10 @@
 # Builds the working tree this file sits in:   cd packaging && makepkg -si
-pkgname=snowhush
+pkgname=windfall
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Snow, leaves, blossom, rain and flowers on your Hyprland desktop, with a tray icon and a GTK4 controller"
 arch=('x86_64' 'aarch64')
-url="https://github.com/tak0dan/snowhush-linux"
+url="https://github.com/tak0dan/windfall"
 license=('GPL-3.0-or-later')
 depends=('gtk4' 'libadwaita' 'libglvnd' 'wayland' 'gcc-libs' 'glibc')
 makedepends=('cargo')
@@ -26,16 +26,16 @@ build() {
 check() {
   cd "$startdir/.."
   export CARGO_TARGET_DIR="$srcdir/target"
-  cargo test --release -p snowhush-core
+  cargo test --release -p windfall-core
 }
 
 package() {
   cd "$startdir/.."
-  for b in snowhushd snowhushctl snowhush-gui; do
+  for b in windfalld windfallctl windfall-gui; do
     install -Dm755 "$srcdir/target/release/$b" "$pkgdir/usr/bin/$b"
   done
-  install -Dm644 packaging/snowhush-controller.desktop "$pkgdir/usr/share/applications/io.github.snowhush.Controller.desktop"
-  install -Dm644 packaging/snowhush.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/snowhush.svg"
+  install -Dm644 packaging/windfall-controller.desktop "$pkgdir/usr/share/applications/io.github.tak0dan.Windfall.desktop"
+  install -Dm644 packaging/windfall.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/windfall.svg"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  install -Dm644 packaging/snowhushd.service "$pkgdir/usr/lib/systemd/user/snowhushd.service"
+  install -Dm644 packaging/windfalld.service "$pkgdir/usr/lib/systemd/user/windfalld.service"
 }

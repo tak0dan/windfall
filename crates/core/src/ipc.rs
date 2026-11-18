@@ -33,7 +33,7 @@ pub enum Response {
 
 pub fn socket_path() -> PathBuf {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    dir.join("snowhush.sock")
+    dir.join("windfall.sock")
 }
 
 pub fn connect() -> std::io::Result<UnixStream> {

@@ -174,10 +174,21 @@ impl Config {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
             .unwrap_or_else(|| PathBuf::from("."));
-        base.join("snowhush").join("config.toml")
+        base.join("windfall").join("config.toml")
     }
 
     pub fn load() -> Config {
+        // Settings from the working-title days live in ~/.config/snowhush; take them over once.
+        let path = Config::path();
+        if !path.exists() {
+            let old = path.parent().and_then(|d| d.parent()).map(|d| d.join("snowhush").join("config.toml"));
+            if let Some(old) = old.filter(|o| o.exists()) {
+                if let Some(dir) = path.parent() {
+                    let _ = std::fs::create_dir_all(dir);
+                }
+                let _ = std::fs::copy(old, &path);
+            }
+        }
         let mut c: Config = std::fs::read_to_string(Config::path())
             .ok()
             .and_then(|s| toml::from_str(&s).ok())

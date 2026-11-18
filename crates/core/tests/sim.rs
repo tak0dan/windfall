@@ -1,7 +1,7 @@
-use snowhush_core::config::{Config, Effect, Patch};
-use snowhush_core::draw::Batch;
-use snowhush_core::geom::Rect;
-use snowhush_core::sim::*;
+use windfall_core::config::{Config, Effect, Patch};
+use windfall_core::draw::Batch;
+use windfall_core::geom::Rect;
+use windfall_core::sim::*;
 
 fn params(effect: Effect) -> Params {
     Params { effect, intensity: 1.0, melt: false, interact: true, wind: 0.0, ground: true, windows: true, layers: true, pixel: false, pixel_size: 0.0, glow: [1.0, 0.85, 0.3] }
@@ -145,7 +145,7 @@ fn touched_flowers_stop_growing_at_a_limit() {
 }
 
 mod shape {
-    use snowhush_core::shape::*;
+    use windfall_core::shape::*;
 
     /// A transparent bar: a gradient "wallpaper" with framed modules (a light 1px frame, darker inside).
     fn bar(w: usize, h: usize, modules: &[(usize, usize, usize)]) -> Vec<u8> {

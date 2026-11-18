@@ -1,10 +1,10 @@
-use snowhush_core::config::{BarMode, Effect, Patch, Renderer};
-use snowhush_core::ipc::{self, Request, Response};
+use windfall_core::config::{BarMode, Effect, Patch, Renderer};
+use windfall_core::ipc::{self, Request, Response};
 use std::io::{BufRead, BufReader};
 
-const HELP: &str = "snowhushctl - control the running snowhushd
+const HELP: &str = "windfallctl - control the running windfalld
 
-usage: snowhushctl <command>
+usage: windfallctl <command>
 
   status [--json]       show the current settings
   toggle | on | off     enable or disable the overlay
@@ -26,7 +26,7 @@ fn main() {
     let code = match run(&args) {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("snowhushctl: {e}");
+            eprintln!("windfallctl: {e}");
             1
         }
     };
@@ -69,7 +69,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "opacity" => set(Patch { opacity: Some(num(args.get(1), 10.0, 100.0)? / 100.0), ..Default::default() }),
         "pixel-size" => set(Patch { pixel_size: Some(num(args.get(1), 1.0, 10.0)? as u32), ..Default::default() }),
         "bars" => set(Patch { bar_mode: Some(args.get(1).and_then(|s| BarMode::parse(s)).ok_or("expected visible or whole")?), ..Default::default() }),
-        "glow" => set(Patch { glow_color: Some(args.get(1).filter(|c| snowhush_core::palette::parse_hex(c).is_some()).ok_or("expected a colour like #ffd84d")?.clone()), ..Default::default() }),
+        "glow" => set(Patch { glow_color: Some(args.get(1).filter(|c| windfall_core::palette::parse_hex(c).is_some()).ok_or("expected a colour like #ffd84d")?.clone()), ..Default::default() }),
         "wind" => set(Patch { wind: Some(num(args.get(1), -100.0, 100.0)? / 100.0), ..Default::default() }),
         "set" => {
             let mut p = Patch::default();
@@ -106,7 +106,7 @@ fn run(args: &[String]) -> Result<(), String> {
                     println!("{}", serde_json::to_string_pretty(&state).unwrap());
                 } else {
                     let c = &state.config;
-                    println!("snowhushd {} on {}", state.version, state.monitors.join(", "));
+                    println!("windfalld {} on {}", state.version, state.monitors.join(", "));
                     println!("{}  {} / {}  intensity {:.0}%  opacity {:.0}%", if c.enabled { "on " } else { "off" }, c.effect.title(), c.renderer.title(), c.intensity * 100.0, c.opacity * 100.0);
                 }
             }
@@ -116,5 +116,5 @@ fn run(args: &[String]) -> Result<(), String> {
 }
 
 fn not_running(e: std::io::Error) -> String {
-    format!("cannot reach snowhushd ({e}); is it running? Try: systemctl --user start snowhush")
+    format!("cannot reach windfalld ({e}); is it running? Try: systemctl --user start windfall")
 }

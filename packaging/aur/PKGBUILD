@@ -1,18 +1,18 @@
-# AUR: snowhush-git, built from the repository.
-pkgname=snowhush-git
+# AUR: windfall-git, built from the repository.
+pkgname=windfall-git
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Snow, leaves, blossom, rain and flowers on your Hyprland desktop, with a tray icon and a GTK4 controller"
 arch=('x86_64' 'aarch64')
-url="https://github.com/tak0dan/snowhush-linux"
+url="https://github.com/tak0dan/windfall"
 license=('GPL-3.0-or-later')
 depends=('gtk4' 'libadwaita' 'libglvnd' 'wayland' 'gcc-libs' 'glibc')
 makedepends=('cargo')
 optdepends=('ttf-jetbrains-mono: pixel-theme font fallback'
             'ttf-press-start-2p: authentic pixel font for the controller in pixel mode')
 options=('!lto' '!debug')
-provides=('snowhush')
-conflicts=('snowhush')
+provides=('windfall')
+conflicts=('windfall')
 source=("$pkgname::git+$url.git")
 sha256sums=('SKIP')
 
@@ -35,16 +35,16 @@ build() {
 
 check() {
   cd "$pkgname"
-  cargo test --release --frozen -p snowhush-core
+  cargo test --release --frozen -p windfall-core
 }
 
 package() {
   cd "$pkgname"
-  for b in snowhushd snowhushctl snowhush-gui; do
+  for b in windfalld windfallctl windfall-gui; do
     install -Dm755 "target/release/$b" "$pkgdir/usr/bin/$b"
   done
-  install -Dm644 packaging/snowhush-controller.desktop "$pkgdir/usr/share/applications/io.github.snowhush.Controller.desktop"
-  install -Dm644 packaging/snowhush.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/snowhush.svg"
+  install -Dm644 packaging/windfall-controller.desktop "$pkgdir/usr/share/applications/io.github.tak0dan.Windfall.desktop"
+  install -Dm644 packaging/windfall.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/windfall.svg"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  install -Dm644 packaging/snowhushd.service "$pkgdir/usr/lib/systemd/user/snowhushd.service"
+  install -Dm644 packaging/windfalld.service "$pkgdir/usr/lib/systemd/user/windfalld.service"
 }

@@ -1,7 +1,7 @@
 use crate::hypr::Snapshot;
-use snowhush_core::config::Patch;
-use snowhush_core::shape::Segment;
-use snowhush_core::ipc::{Request, Response};
+use windfall_core::config::Patch;
+use windfall_core::shape::Segment;
+use windfall_core::ipc::{Request, Response};
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc;
 

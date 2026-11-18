@@ -4,14 +4,14 @@ mod theme;
 use adw::prelude::*;
 use gtk::glib;
 use libadwaita as adw;
-use snowhush_core::config::{BarMode, Config, Effect, Patch, Renderer};
-use snowhush_core::ipc::{self, Request, Response};
+use windfall_core::config::{BarMode, Config, Effect, Patch, Renderer};
+use windfall_core::ipc::{self, Request, Response};
 use std::cell::{Cell, RefCell};
 use std::io::{BufRead, BufReader};
 use std::rc::Rc;
 use std::sync::mpsc;
 
-const APP_ID: &str = "io.github.snowhush.Controller";
+const APP_ID: &str = "io.github.tak0dan.Windfall";
 
 fn main() -> glib::ExitCode {
     let app = adw::Application::builder().application_id(APP_ID).build();
@@ -24,7 +24,7 @@ fn ensure_daemon() -> bool {
     if ipc::connect().is_ok() {
         return true;
     }
-    let _ = std::process::Command::new("snowhushd").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+    let _ = std::process::Command::new("windfalld").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
     for _ in 0..30 {
         std::thread::sleep(std::time::Duration::from_millis(100));
         if ipc::connect().is_ok() {
@@ -93,7 +93,7 @@ impl Ui {
         self.bar_mode.set_selected(BarMode::ALL.iter().position(|m| *m == c.bar_mode).unwrap_or(0) as u32);
         self.bar_mode.set_sensitive(c.layers);
         self.glow_row.set_visible(c.effect == Effect::Flowers);
-        if let Some(rgb) = snowhush_core::palette::parse_hex(&c.glow_color) {
+        if let Some(rgb) = windfall_core::palette::parse_hex(&c.glow_color) {
             self.glow_button.set_rgba(&gtk::gdk::RGBA::new(rgb[0], rgb[1], rgb[2], 1.0));
         }
         self.interact.set_active(c.interact);
@@ -143,7 +143,7 @@ fn build(app: &adw::Application) {
     let toolbar = adw::ToolbarView::new();
     let header = adw::HeaderBar::new();
     toolbar.add_top_bar(&header);
-    let banner = adw::Banner::new("Snowhush isn't running");
+    let banner = adw::Banner::new("Windfall isn't running");
     banner.set_button_label(Some("Start"));
     toolbar.add_top_bar(&banner);
 
@@ -223,7 +223,7 @@ fn build(app: &adw::Application) {
 
     let scroller = gtk::ScrolledWindow::builder().child(&page).hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).build();
     toolbar.set_content(Some(&scroller));
-    let window = adw::ApplicationWindow::builder().application(app).title("Snowhush Controller").default_width(460).default_height(900).resizable(false).content(&toolbar).build();
+    let window = adw::ApplicationWindow::builder().application(app).title("Windfall Controller").default_width(460).default_height(900).resizable(false).content(&toolbar).build();
 
     let ui = Rc::new(Ui {
         updating: Cell::new(false),
@@ -291,7 +291,7 @@ fn build(app: &adw::Application) {
         let ui2 = ui.clone();
         ui.glow_button.connect_rgba_notify(move |b| {
             let c = b.rgba();
-            let hex = snowhush_core::palette::hex([c.red(), c.green(), c.blue()]);
+            let hex = windfall_core::palette::hex([c.red(), c.green(), c.blue()]);
             ui2.patch(Patch { glow_color: Some(hex), ..Default::default() })
         });
     }
@@ -356,7 +356,7 @@ fn build(app: &adw::Application) {
         });
     }
     ui.banner.connect_button_clicked(|_| {
-        let _ = std::process::Command::new("snowhushd").spawn();
+        let _ = std::process::Command::new("windfalld").spawn();
     });
     window.present();
 }

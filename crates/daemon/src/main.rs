@@ -9,13 +9,13 @@ use calloop::timer::{TimeoutAction, Timer};
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
 use msg::Msg;
-use snowhush_core::config::{BarMode, Config, Renderer};
-use snowhush_core::geom::Rect;
-use snowhush_core::shape;
-use snowhush_core::sim::{Surf, SurfKind};
-use snowhush_core::draw::Batch;
-use snowhush_core::ipc::{Request, Response, State};
-use snowhush_core::sim::{Params, Scene, World};
+use windfall_core::config::{BarMode, Config, Renderer};
+use windfall_core::geom::Rect;
+use windfall_core::shape;
+use windfall_core::sim::{Surf, SurfKind};
+use windfall_core::draw::Batch;
+use windfall_core::ipc::{Request, Response, State};
+use windfall_core::sim::{Params, Scene, World};
 use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -107,7 +107,7 @@ impl App {
             layers: c.layers,
             pixel: c.renderer == Renderer::Pixel,
             pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
-            glow: snowhush_core::palette::parse_hex(&c.glow_color).unwrap_or([1.0, 0.85, 0.3]),
+            glow: windfall_core::palette::parse_hex(&c.glow_color).unwrap_or([1.0, 0.85, 0.3]),
         }
     }
 
@@ -144,7 +144,7 @@ impl App {
     fn create_overlay(&mut self, i: usize) {
         let gname = self.mons[i].gname;
         let surface = self.compositor.create_surface(&self.qh, ());
-        let layer = self.layer_shell.get_layer_surface(&surface, Some(&self.mons[i].output), Layer::Overlay, "snowhush".into(), &self.qh, gname);
+        let layer = self.layer_shell.get_layer_surface(&surface, Some(&self.mons[i].output), Layer::Overlay, "windfall".into(), &self.qh, gname);
         layer.set_anchor(Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right);
         layer.set_exclusive_zone(-1);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
@@ -198,11 +198,11 @@ impl App {
                 if self.gpu.is_none() {
                     match gpu::Gpu::new(self.conn.backend().display_ptr() as *mut _) {
                         Ok(g) => {
-                            eprintln!("snowhushd: GPU {}", g.renderer);
+                            eprintln!("windfalld: GPU {}", g.renderer);
                             self.gpu = Some(g);
                         }
                         Err(e) => {
-                            eprintln!("snowhushd: no GPU: {e}");
+                            eprintln!("windfalld: no GPU: {e}");
                             return;
                         }
                     }
@@ -210,7 +210,7 @@ impl App {
                 let g = self.gpu.as_ref().unwrap();
                 match g.create_surface(ov.egl_win.as_ref().unwrap().ptr() as *mut _) {
                     Ok(t) => ov.target = Some(t),
-                    Err(e) => eprintln!("snowhushd: {e}"),
+                    Err(e) => eprintln!("windfalld: {e}"),
                 }
             }
         }
@@ -267,7 +267,7 @@ impl App {
                 clear: m.name.as_ref().and_then(|n| self.bare.get(n)).map(|v| v.iter().map(|r| [(r[0] as f32 * scale) as i32, (r[1] as f32 * scale) as i32, (r[2] as f32 * scale).ceil() as i32, (r[3] as f32 * scale).ceil() as i32]).collect()).unwrap_or_default(),
             };
             if self.debug && now.duration_since(self.debug_at).as_secs() >= 2 {
-                eprintln!("snowhushd: {} parts={} verts={} mass={:.0} buf={:?}", m.name.as_deref().unwrap_or("?"), m.world.particle_count(), self.batch.vertex_count(), m.world.pile_mass(), buf);
+                eprintln!("windfalld: {} parts={} verts={} mass={:.0} buf={:?}", m.name.as_deref().unwrap_or("?"), m.world.particle_count(), self.batch.vertex_count(), m.world.pile_mass(), buf);
             }
             g.draw(target, &self.batch.data, &opts);
         }
@@ -371,7 +371,7 @@ impl App {
         });
     }
 
-    fn apply(&mut self, patch: &snowhush_core::config::Patch) {
+    fn apply(&mut self, patch: &windfall_core::config::Patch) {
         if self.config.apply(patch) {
             self.save_at = Some(Instant::now() + Duration::from_millis(400));
             let names: Vec<String> = self.scenes.keys().cloned().collect();
@@ -407,7 +407,7 @@ impl App {
             }
             Msg::Mask { id, segs } => {
                 if self.debug {
-                    eprintln!("snowhushd: layer {id:x} -> {:?}", segs.as_ref().map(|v| v.iter().map(|g| (g.x0 as i32, g.x1 as i32, g.top as i32)).collect::<Vec<_>>()));
+                    eprintln!("windfalld: layer {id:x} -> {:?}", segs.as_ref().map(|v| v.iter().map(|g| (g.x0 as i32, g.x1 as i32, g.top as i32)).collect::<Vec<_>>()));
                 }
                 self.masks.insert(id, segs);
                 let names: Vec<String> = self.scenes.keys().cloned().collect();
@@ -422,11 +422,11 @@ impl App {
             Msg::Patch(p) => self.apply(&p),
             Msg::Toggle => {
                 let on = !self.config.enabled;
-                self.apply(&snowhush_core::config::Patch { enabled: Some(on), ..Default::default() });
+                self.apply(&windfall_core::config::Patch { enabled: Some(on), ..Default::default() });
             }
             Msg::Clear => self.mons.iter_mut().for_each(|m| m.world.clear()),
             Msg::OpenGui => {
-                let _ = std::process::Command::new("snowhush-gui").stdin(std::process::Stdio::null()).spawn();
+                let _ = std::process::Command::new("windfall-gui").stdin(std::process::Stdio::null()).spawn();
             }
             Msg::Quit => self.quit = true,
             Msg::Ipc { req, reply, subscriber } => {
@@ -536,18 +536,18 @@ delegate_noop!(App: ignore WpFractionalScaleManagerV1);
 
 fn main() {
     if !hypr::available() {
-        eprintln!("snowhushd: Hyprland's IPC socket was not found; run this inside a Hyprland session.");
+        eprintln!("windfalld: Hyprland's IPC socket was not found; run this inside a Hyprland session.");
         std::process::exit(1);
     }
     let conn = Connection::connect_to_env().unwrap_or_else(|e| {
-        eprintln!("snowhushd: cannot connect to Wayland: {e}");
+        eprintln!("windfalld: cannot connect to Wayland: {e}");
         std::process::exit(1);
     });
     let (globals, queue) = registry_queue_init::<App>(&conn).expect("registry");
     let qh = queue.handle();
     let compositor = globals.bind::<wl_compositor::WlCompositor, _, _>(&qh, 4..=6, ()).expect("wl_compositor");
     let layer_shell = globals.bind::<ZwlrLayerShellV1, _, _>(&qh, 1..=4, ()).unwrap_or_else(|_| {
-        eprintln!("snowhushd: the compositor has no wlr-layer-shell");
+        eprintln!("windfalld: the compositor has no wlr-layer-shell");
         std::process::exit(1);
     });
     let viewporter = globals.bind::<WpViewporter, _, _>(&qh, 1..=1, ()).ok();
@@ -558,9 +558,9 @@ fn main() {
     let (tx, rx) = calloop::channel::channel::<Msg>();
     if let Err(e) = server::start(tx.clone()) {
         if e.kind() == std::io::ErrorKind::AddrInUse {
-            eprintln!("snowhushd is already running.");
+            eprintln!("windfalld is already running.");
         } else {
-            eprintln!("snowhushd: control socket: {e}");
+            eprintln!("windfalld: control socket: {e}");
         }
         std::process::exit(1);
     }
@@ -574,7 +574,7 @@ fn main() {
         match (tray::Tray { config: config.clone(), tx: tx.clone() }).spawn() {
             Ok(h) => Some(h),
             Err(e) => {
-                eprintln!("snowhushd: no tray ({e}); is a StatusNotifier host running?");
+                eprintln!("windfalld: no tray ({e}); is a StatusNotifier host running?");
                 None
             }
         }
@@ -604,7 +604,7 @@ fn main() {
         tray,
         awake,
         quit: false,
-        debug: std::env::var_os("SNOWHUSH_DEBUG").is_some(),
+        debug: std::env::var_os("WINDFALL_DEBUG").is_some(),
         debug_at: Instant::now(),
         cal_at: Instant::now(),
     };
@@ -639,5 +639,5 @@ fn main() {
         app.destroy_overlay(i);
     }
     let _ = app.conn.flush();
-    let _ = std::fs::remove_file(snowhush_core::ipc::socket_path());
+    let _ = std::fs::remove_file(windfall_core::ipc::socket_path());
 }

@@ -1,4 +1,4 @@
-//! Shared brains of Snowhush: settings, the control protocol and the particle/flower simulation.
+//! Shared brains of Windfall: settings, the control protocol and the particle/flower simulation.
 //! Nothing in here touches Wayland or the GPU, so all of it is unit-testable.
 
 pub mod config;

@@ -2,8 +2,8 @@
 //! A poller thread turns that into per-monitor `Scene`s and sends them to the main loop.
 
 use serde::Deserialize;
-use snowhush_core::geom::Rect;
-use snowhush_core::sim::{Scene, Surf, SurfKind};
+use windfall_core::geom::Rect;
+use windfall_core::sim::{Scene, Surf, SurfKind};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::{Read, Write};
@@ -123,7 +123,7 @@ pub struct Snapshot {
 
 fn ignored_layer(ns: &str) -> bool {
     let ns = ns.to_ascii_lowercase();
-    ["snowhush", "wallpaper", "awww", "swww", "hyprpaper", "swaybg", "wpaperd", "mpvpaper", "selection", "hyprpicker", "wlogout", "lockscreen", "hyprlock", "rofi", "wofi", "fuzzel", "notification", "swaync", "mako", "dunst"]
+    ["windfall", "wallpaper", "awww", "swww", "hyprpaper", "swaybg", "wpaperd", "mpvpaper", "selection", "hyprpicker", "wlogout", "lockscreen", "hyprlock", "rofi", "wofi", "fuzzel", "notification", "swaync", "mako", "dunst"]
         .iter()
         .any(|bad| ns.contains(bad))
 }

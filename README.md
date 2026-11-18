@@ -1,7 +1,9 @@
-# Snowhush for Hyprland
+# Windfall
 
-Snow, autumn leaves, cherry blossom, rain and flowers on your Hyprland desktop. Written from scratch in Rust
-for Wayland; inspired by the macOS app of the same name.
+*Snow, leaves, petals and rain come down; flowers grow where they land.*
+
+A weather overlay for your Hyprland desktop. Written from scratch in Rust for Wayland, inspired by the macOS
+app Snowhush (no code from it is used).
 
 * **Effects** – snow, leaves, blossom and rain fall and pile up on window tops, bars and the screen's edge.
   Flowers instead grow in a thick lawn of tiny blooms along the same edges; they sway when the cursor
@@ -11,8 +13,8 @@ for Wayland; inspired by the macOS app of the same name.
 * **Tray icon** (StatusNotifier) – left click opens the controller, middle click toggles, right click has the menu.
 * **Controller** (GTK4 + libadwaita) – live preview, themed after the running effect.
 * **Bars** – transparent bars (Waybar modules with frames, Quickshell pills…) only hold things on the parts
-  that are actually painted. Snowhush looks at the screen (wlr-screencopy) to find them, and re-checks every
-  minute. Choose *Whole bar* in the controller (or `snowhushctl bars whole`) to disable that.
+  that are actually painted. Windfall looks at the screen (wlr-screencopy) to find them, and re-checks every
+  second. Choose *Whole bar* in the controller (or `windfallctl bars whole`) to disable that.
 * **Hyprland** – window geometry, workspaces, fullscreen, rounded corners and borders come from Hyprland's IPC.
   Snow on a window waits while its workspace is off screen, slides off gradually when the window is moved, and
   drops when it closes. Clicks pass straight through the overlay. Fractional scaling is supported.
@@ -22,32 +24,32 @@ for Wayland; inspired by the macOS app of the same name.
 Arch / AUR:
 
 ```sh
-git clone https://github.com/tak0dan/snowhush-linux && cd snowhush-linux/packaging
-makepkg -si            # or, once published: yay -S snowhush-git
+git clone https://github.com/tak0dan/windfall && cd windfall/packaging
+makepkg -si            # or from the AUR: yay -S windfall
 ```
 
-This installs `snowhushd`, `snowhushctl`, `snowhush-gui`, a system-wide desktop entry
-(**Snowhush Controller**), the icon and a systemd user unit.
+This installs `windfalld`, `windfallctl`, `windfall-gui`, a system-wide desktop entry
+(**Windfall Controller**), the icon and a systemd user unit.
 
 Start it with your session. Either
 
 ```sh
-systemctl --user enable --now snowhushd      # needs a systemd-aware Hyprland session (e.g. uwsm)
+systemctl --user enable --now windfalld      # needs a systemd-aware Hyprland session (e.g. uwsm)
 ```
 
-or in `hyprland.conf`: `exec-once = snowhushd` (Lua config: `hl.exec_cmd("snowhushd")`).
+or in `hyprland.conf`: `exec-once = windfalld` (Lua config: `hl.exec_cmd("windfalld")`).
 
 ## Use
 
 ```sh
-snowhushctl effect flowers
-snowhushctl renderer pixel
-snowhushctl intensity 70
-snowhushctl bars visible|whole
-snowhushctl status --json
+windfallctl effect flowers
+windfallctl renderer pixel
+windfallctl intensity 70
+windfallctl bars visible|whole
+windfallctl status --json
 ```
 
-Settings live in `~/.config/snowhush/config.toml`. The control socket is `$XDG_RUNTIME_DIR/snowhush.sock`
+Settings live in `~/.config/windfall/config.toml`. The control socket is `$XDG_RUNTIME_DIR/windfall.sock`
 (one JSON request per line; see `crates/core/src/ipc.rs`).
 
 ## Notes
@@ -58,4 +60,4 @@ Settings live in `~/.config/snowhush/config.toml`. The control socket is `$XDG_R
 
 ## Licence
 
-GPL-3.0-or-later. This is an independent implementation; no code from the original project is used.
+GPL-3.0-or-later. Independent implementation, inspired by the macOS app Snowhush; no code from it is used.

@@ -3,11 +3,11 @@
 
 use gtk::cairo::{self, Antialias, Context, Filter, Format, ImageSurface, Matrix};
 use gtk::prelude::*;
-use snowhush_core::config::{Config, Effect, Renderer};
-use snowhush_core::draw::{Batch, FLOATS_PER_VERTEX};
-use snowhush_core::geom::Rect;
-use snowhush_core::palette::theme;
-use snowhush_core::sim::{Params, Scene, Surf, SurfKind, World};
+use windfall_core::config::{Config, Effect, Renderer};
+use windfall_core::draw::{Batch, FLOATS_PER_VERTEX};
+use windfall_core::geom::Rect;
+use windfall_core::palette::theme;
+use windfall_core::sim::{Params, Scene, Surf, SurfKind, World};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -86,7 +86,7 @@ fn params(c: &Config) -> Params {
         layers: true,
         pixel: c.renderer == Renderer::Pixel,
         pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
-        glow: snowhush_core::palette::parse_hex(&c.glow_color).unwrap_or([1.0, 0.85, 0.3]),
+        glow: windfall_core::palette::parse_hex(&c.glow_color).unwrap_or([1.0, 0.85, 0.3]),
     }
 }
 

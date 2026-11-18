@@ -66,7 +66,7 @@ delegate_noop!(State: ignore ZwlrScreencopyManagerV1);
 
 fn memfd(size: usize) -> Option<OwnedFd> {
     unsafe {
-        let fd = libc::memfd_create(c"snowhush-capture".as_ptr(), libc::MFD_CLOEXEC);
+        let fd = libc::memfd_create(c"windfall-capture".as_ptr(), libc::MFD_CLOEXEC);
         if fd < 0 {
             return None;
         }

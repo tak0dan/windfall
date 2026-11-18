@@ -1,8 +1,8 @@
 //! The controller's look follows what is falling: each effect has its own palette, and the pixel renderer
 //! turns the whole window pixel-art (square corners, hard borders and shadows, a blocky font).
 
-use snowhush_core::config::{Effect, Renderer};
-use snowhush_core::palette::{hex, mix, theme};
+use windfall_core::config::{Effect, Renderer};
+use windfall_core::palette::{hex, mix, theme};
 
 pub fn css(effect: Effect, renderer: Renderer) -> String {
     let t = theme(effect);

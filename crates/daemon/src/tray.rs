@@ -3,7 +3,7 @@
 use crate::msg::Msg;
 use calloop::channel::Sender;
 use ksni::menu::*;
-use snowhush_core::config::{Config, Effect, Patch, Renderer};
+use windfall_core::config::{Config, Effect, Patch, Renderer};
 
 pub struct Tray {
     pub config: Config,
@@ -20,10 +20,10 @@ impl Tray {
 
 impl ksni::Tray for Tray {
     fn id(&self) -> String {
-        "snowhush".into()
+        "windfall".into()
     }
     fn title(&self) -> String {
-        "Snowhush".into()
+        "Windfall".into()
     }
     fn category(&self) -> ksni::Category {
         ksni::Category::ApplicationStatus
@@ -37,7 +37,7 @@ impl ksni::Tray for Tray {
     }
     fn tool_tip(&self) -> ksni::ToolTip {
         ksni::ToolTip {
-            title: "Snowhush".into(),
+            title: "Windfall".into(),
             description: format!("{}, {}{}", self.config.effect.title(), self.config.renderer.title(), if self.config.enabled { "" } else { " (off)" }),
             icon_name: String::new(),
             icon_pixmap: Vec::new(),
