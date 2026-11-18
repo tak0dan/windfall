@@ -1,5 +1,6 @@
 use crate::hypr::Snapshot;
 use snowhush_core::config::Patch;
+use snowhush_core::shape::Segment;
 use snowhush_core::ipc::{Request, Response};
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc;
@@ -12,5 +13,11 @@ pub enum Msg {
     Clear,
     OpenGui,
     Quit,
+    /// Blank (or restore) a monitor's overlay so a bar can be photographed without our own drawing on it.
+    Hide { monitor: String, hidden: bool },
+    /// What was found of one layer surface; `None` if it could not be photographed.
+    Mask { id: u64, segs: Option<Vec<Segment>> },
+    /// A calibration pass for the monitor finished.
+    Calibrated { monitor: String, key: Vec<(u64, [i32; 4])> },
     Ipc { req: Request, reply: mpsc::Sender<Response>, subscriber: Option<UnixStream> },
 }

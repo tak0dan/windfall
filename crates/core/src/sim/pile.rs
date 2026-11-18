@@ -12,12 +12,14 @@ pub struct Pile {
     pub h: Vec<f32>,
     pub c: Vec<u8>,
     age: f32,
+    /// Its surface is off screen; the pile waits for it.
+    pub dormant: bool,
 }
 
 impl Pile {
     pub fn new(x0: f32, width: f32, base: f32) -> Pile {
         let n = ((width / CELL).ceil() as usize).max(1);
-        Pile { x0, base, h: vec![0.0; n], c: vec![0; n], age: 0.0 }
+        Pile { x0, base, h: vec![0.0; n], c: vec![0; n], age: 0.0, dormant: false }
     }
     pub fn width(&self) -> f32 {
         self.h.len() as f32 * CELL
@@ -43,6 +45,14 @@ impl Pile {
         self.base = base;
         self.h = h;
         self.c = c;
+    }
+    /// Moves the pile along with its window, keeping every cell where it sits on the window.
+    pub fn carry(&mut self, x0: f32, width: f32, base: f32) {
+        let n = ((width / CELL).ceil() as usize).max(1);
+        self.h.resize(n, 0.0);
+        self.c.resize(n, 0);
+        self.x0 = x0;
+        self.base = base;
     }
     fn idx(&self, x: f32) -> usize {
         (((x - self.x0) / CELL).floor().max(0.0) as usize).min(self.h.len() - 1)

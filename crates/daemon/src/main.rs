@@ -1,3 +1,4 @@
+mod capture;
 mod gpu;
 mod hypr;
 mod msg;
@@ -8,11 +9,14 @@ use calloop::timer::{TimeoutAction, Timer};
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
 use msg::Msg;
-use snowhush_core::config::{Config, Renderer};
+use snowhush_core::config::{BarMode, Config, Renderer};
+use snowhush_core::geom::Rect;
+use snowhush_core::shape;
+use snowhush_core::sim::{Surf, SurfKind};
 use snowhush_core::draw::Batch;
 use snowhush_core::ipc::{Request, Response, State};
 use snowhush_core::sim::{Params, Scene, World};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -51,6 +55,12 @@ struct Mon {
     world: World,
 }
 
+struct Calibration {
+    key: Vec<(u64, [i32; 4])>,
+    at: Instant,
+    busy: bool,
+}
+
 struct App {
     qh: QueueHandle<App>,
     conn: Connection,
@@ -62,6 +72,11 @@ struct App {
     mons: Vec<Mon>,
     config: Config,
     scenes: HashMap<String, (Scene, bool)>,
+    /// What each bar layer turned out to look like; `None` means it could not be examined.
+    masks: HashMap<u64, Option<Vec<shape::Segment>>>,
+    calibration: HashMap<String, Calibration>,
+    hidden: HashSet<String>,
+    send: calloop::channel::Sender<Msg>,
     batch: Batch,
     last_tick: Instant,
     save_at: Option<Instant>,
@@ -86,6 +101,7 @@ impl App {
             windows: c.windows,
             layers: c.layers,
             pixel: c.renderer == Renderer::Pixel,
+            pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
         }
     }
 
@@ -134,8 +150,8 @@ impl App {
         let viewport = self.viewporter.as_ref().map(|v| v.get_viewport(&surface, &self.qh, ()));
         let frac = self.frac_mgr.as_ref().map(|m| m.get_fractional_scale(&surface, &self.qh, gname));
         surface.commit();
-        if let Some((scene, _)) = self.mons[i].name.as_ref().and_then(|n| self.scenes.get(n)) {
-            self.mons[i].world.set_scene(scene.clone());
+        if let Some(n) = self.mons[i].name.clone() {
+            self.push_scene(&n);
         }
         self.mons[i].overlay = Some(Overlay { surface, layer, viewport, frac, egl_win: None, target: None, size: (0, 0), frac_scale: None });
     }
@@ -225,7 +241,9 @@ impl App {
             }
             m.world.step(dt, &params);
             self.batch.clear();
-            m.world.draw(&mut self.batch, &params);
+            if !m.name.as_ref().is_some_and(|n| self.hidden.contains(n)) {
+                m.world.draw(&mut self.batch, &params);
+            }
             let scale = ov.frac_scale.unwrap_or(m.int_scale.max(1) as f32);
             let buf = (((ov.size.0 as f32 * scale).round() as i32).max(1), ((ov.size.1 as f32 * scale).round() as i32).max(1));
             let opts = gpu::Opts {
@@ -245,9 +263,83 @@ impl App {
         }
     }
 
+    /// The scene for the simulation: bars replaced by the parts of them that are painted.
+    fn push_scene(&mut self, name: &str) {
+        let Some((raw, _)) = self.scenes.get(name) else { return };
+        let mut scene = raw.clone();
+        if self.config.bar_mode == BarMode::Visible {
+            let mut surfs: Vec<Surf> = Vec::new();
+            for s in raw.surfs.iter() {
+                if s.kind != SurfKind::Layer {
+                    surfs.push(s.clone());
+                    continue;
+                }
+                match self.masks.get(&s.id) {
+                    // Not examined yet: keep it bare rather than flash snow over the gaps.
+                    None => {}
+                    // Could not be examined: the whole rectangle is the best guess.
+                    Some(None) => surfs.push(s.clone()),
+                    Some(Some(segs)) => {
+                        for (i, g) in segs.iter().enumerate() {
+                            surfs.push(Surf {
+                                id: s.id.wrapping_mul(31).wrapping_add(i as u64 + 1),
+                                rect: Rect::new(s.rect.x + g.x0, s.rect.y + g.top, g.x1 - g.x0, (s.rect.h - g.top).max(1.0)),
+                                z: s.z,
+                                kind: SurfKind::Layer,
+                                inset: 2.0,
+                                shown: true,
+                            });
+                        }
+                    }
+                }
+            }
+            scene.surfs = surfs;
+        }
+        if let Some(m) = self.mons.iter_mut().find(|m| m.name.as_deref() == Some(name)) {
+            m.world.set_scene(scene);
+        }
+    }
+
+    /// Looks at the bars of a monitor when they are new or have not been looked at for a while.
+    fn calibrate(&mut self, name: &str) {
+        if !self.config.enabled || !self.config.layers || self.config.bar_mode != BarMode::Visible {
+            return;
+        }
+        let Some((raw, _)) = self.scenes.get(name) else { return };
+        let layers: Vec<(u64, [i32; 4])> = raw.surfs.iter().filter(|s| s.kind == SurfKind::Layer).map(|s| (s.id, [s.rect.x as i32, s.rect.y as i32, s.rect.w as i32, s.rect.h as i32])).collect();
+        if layers.is_empty() {
+            return;
+        }
+        let cal = self.calibration.get(name);
+        if cal.is_some_and(|c| c.busy || (c.key == layers && c.at.elapsed() < Duration::from_secs(60))) {
+            return;
+        }
+        self.calibration.insert(name.to_string(), Calibration { key: layers.clone(), at: Instant::now(), busy: true });
+        let (tx, monitor) = (self.send.clone(), name.to_string());
+        std::thread::spawn(move || {
+            // Blank our own drawing for a moment so only the bar itself is photographed.
+            let _ = tx.send(Msg::Hide { monitor: monitor.clone(), hidden: true });
+            std::thread::sleep(Duration::from_millis(110));
+            for (id, [x, y, w, h]) in &layers {
+                let rows = (*h).min(40);
+                let segs = capture::grab(&monitor, (*x, *y, *w, rows)).and_then(|img| {
+                    let strip = shape::Strip { data: &img.data, w: img.w, h: img.h, stride: img.stride };
+                    Some(shape::segments(&strip))
+                });
+                let _ = tx.send(Msg::Mask { id: *id, segs });
+            }
+            let _ = tx.send(Msg::Calibrated { monitor, key: layers });
+        });
+    }
+
     fn apply(&mut self, patch: &snowhush_core::config::Patch) {
         if self.config.apply(patch) {
             self.save_at = Some(Instant::now() + Duration::from_millis(400));
+            let names: Vec<String> = self.scenes.keys().cloned().collect();
+            for n in &names {
+                self.push_scene(n);
+                self.calibrate(n);
+            }
             self.reconcile();
             self.broadcast();
         }
@@ -256,13 +348,37 @@ impl App {
     fn handle(&mut self, msg: Msg) {
         match msg {
             Msg::Snapshot(snap) => {
+                let mut names = Vec::new();
                 for ms in snap.monitors {
-                    if let Some(m) = self.mons.iter_mut().find(|m| m.name.as_deref() == Some(&ms.name)) {
-                        m.world.set_scene(ms.scene.clone());
-                    }
+                    names.push(ms.name.clone());
                     self.scenes.insert(ms.name, (ms.scene, ms.fullscreen));
                 }
+                for n in &names {
+                    self.push_scene(n);
+                    self.calibrate(n);
+                }
                 self.reconcile();
+            }
+            Msg::Hide { monitor, hidden } => {
+                if hidden {
+                    self.hidden.insert(monitor);
+                } else {
+                    self.hidden.remove(&monitor);
+                }
+            }
+            Msg::Mask { id, segs } => {
+                if self.debug {
+                    eprintln!("snowhushd: layer {id:x} -> {:?}", segs.as_ref().map(|v| v.iter().map(|g| (g.x0 as i32, g.x1 as i32, g.top as i32)).collect::<Vec<_>>()));
+                }
+                self.masks.insert(id, segs);
+                let names: Vec<String> = self.scenes.keys().cloned().collect();
+                for n in names {
+                    self.push_scene(&n);
+                }
+            }
+            Msg::Calibrated { monitor, key } => {
+                self.hidden.remove(&monitor);
+                self.calibration.insert(monitor, Calibration { key, at: Instant::now(), busy: false });
             }
             Msg::Patch(p) => self.apply(&p),
             Msg::Toggle => {
@@ -436,6 +552,10 @@ fn main() {
         mons: Vec::new(),
         config,
         scenes: HashMap::new(),
+        masks: HashMap::new(),
+        calibration: HashMap::new(),
+        hidden: HashSet::new(),
+        send: tx.clone(),
         batch: Batch::default(),
         last_tick: Instant::now(),
         save_at: None,

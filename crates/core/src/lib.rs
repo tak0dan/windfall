@@ -7,4 +7,5 @@ pub mod geom;
 pub mod ipc;
 pub mod palette;
 pub mod rng;
+pub mod shape;
 pub mod sim;

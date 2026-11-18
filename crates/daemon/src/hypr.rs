@@ -165,17 +165,14 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
         let (w, h) = m.logical();
         let mut surfs = Vec::new();
         let bottom = m.reserved[3] as f32;
-        surfs.push(Surf { id: 1, rect: Rect::new(0.0, h - bottom, w, 4000.0), z: -1, kind: SurfKind::Ground, inset: 0.0 });
         let mut fullscreen = false;
+        let mut bottom_bar = false;
         for c in clients {
             if !c.mapped || c.hidden || c.monitor != m.id {
                 continue;
             }
             let on_screen = c.workspace.id == m.active.id || (m.special.id != 0 && c.workspace.id == m.special.id);
-            if !on_screen {
-                continue;
-            }
-            if c.fullscreen > 0 {
+            if c.fullscreen > 0 && on_screen {
                 fullscreen = true;
                 continue;
             }
@@ -191,6 +188,8 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
                 z,
                 kind: SurfKind::Window,
                 inset: style_cache.rounding.min(c.size[0] as f32 / 3.0),
+                // Windows of other workspaces keep their snow, unseen, until they come back.
+                shown: on_screen,
             });
         }
         if let Some(lm) = layers.get(&m.name) {
@@ -208,13 +207,16 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
                     if area > 0.45 * w * h || y < 20.0 || l.w < 24.0 {
                         continue;
                     }
-                    // A bar on the screen's bottom edge is already the ground.
-                    if (y - (h - bottom)).abs() < 3.0 && l.w as f32 > w * 0.5 {
-                        continue;
+                    if y + l.h as f32 >= h - 2.0 && l.w as f32 > w * 0.5 {
+                        bottom_bar = true;
                     }
-                    surfs.push(Surf { id: hash(&format!("{}{}{}{}", l.namespace, l.x, l.y, l.w), 11), rect: Rect::new(x, y, l.w as f32, l.h as f32), z: 1000, kind: SurfKind::Layer, inset: 4.0 });
+                    surfs.push(Surf { id: hash(&format!("{}{}{}{}", l.namespace, l.x, l.y, l.w), 11), rect: Rect::new(x, y, l.w as f32, l.h as f32), z: 1000, kind: SurfKind::Layer, inset: 4.0, shown: true });
                 }
             }
+        }
+        // The ground is the screen's lower edge, or the bar that sits on it.
+        if !bottom_bar {
+            surfs.push(Surf { id: 1, rect: Rect::new(0.0, h - bottom, w, 4000.0), z: -1, kind: SurfKind::Ground, inset: 0.0, shown: true });
         }
         let mut local = None;
         if let Some(c) = cursor {

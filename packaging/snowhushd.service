@@ -1,0 +1,13 @@
+[Unit]
+Description=Snowhush daemon (weather overlay for Hyprland)
+PartOf=graphical-session.target
+After=graphical-session.target
+ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
+
+[Service]
+ExecStart=/usr/bin/snowhushd
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

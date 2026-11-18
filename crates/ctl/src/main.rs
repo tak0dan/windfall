@@ -1,4 +1,4 @@
-use snowhush_core::config::{Effect, Patch, Renderer};
+use snowhush_core::config::{BarMode, Effect, Patch, Renderer};
 use snowhush_core::ipc::{self, Request, Response};
 use std::io::{BufRead, BufReader};
 
@@ -12,7 +12,8 @@ usage: snowhushctl <command>
   renderer <name>       smooth | pixel
   intensity <0-100>     how much falls or grows
   opacity <10-100>      overall opacity
-  pixel-size <2-10>     size of one art pixel (pixel renderer)
+  pixel-size <1-10>     size of one art pixel (pixel renderer)
+  bars <visible|whole>  grow on a bar's painted parts only, or on all of it
   wind <-100..100>      sideways drift
   set <key>=<value>...  melt, ground, windows, layers, interact, over_fullscreen = true|false
   clear                 sweep away everything that has settled
@@ -65,7 +66,8 @@ fn run(args: &[String]) -> Result<(), String> {
         "renderer" => set(Patch { renderer: Some(args.get(1).and_then(|s| Renderer::parse(s)).ok_or("unknown renderer")?), ..Default::default() }),
         "intensity" => set(Patch { intensity: Some(num(args.get(1), 0.0, 100.0)? / 100.0), ..Default::default() }),
         "opacity" => set(Patch { opacity: Some(num(args.get(1), 10.0, 100.0)? / 100.0), ..Default::default() }),
-        "pixel-size" => set(Patch { pixel_size: Some(num(args.get(1), 2.0, 10.0)? as u32), ..Default::default() }),
+        "pixel-size" => set(Patch { pixel_size: Some(num(args.get(1), 1.0, 10.0)? as u32), ..Default::default() }),
+        "bars" => set(Patch { bar_mode: Some(args.get(1).and_then(|s| BarMode::parse(s)).ok_or("expected visible or whole")?), ..Default::default() }),
         "wind" => set(Patch { wind: Some(num(args.get(1), -100.0, 100.0)? / 100.0), ..Default::default() }),
         "set" => {
             let mut p = Patch::default();

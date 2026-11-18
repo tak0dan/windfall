@@ -70,6 +70,36 @@ impl Renderer {
     }
 }
 
+/// How bars and panels (Waybar, Quickshell...) hold things.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BarMode {
+    /// Only the painted parts: framed modules, pills, a solid strip. Transparent gaps stay bare.
+    #[default]
+    Visible,
+    /// The whole rectangle of the bar.
+    Whole,
+}
+
+impl BarMode {
+    pub const ALL: [BarMode; 2] = [BarMode::Visible, BarMode::Whole];
+    pub fn name(self) -> &'static str {
+        match self {
+            BarMode::Visible => "visible",
+            BarMode::Whole => "whole",
+        }
+    }
+    pub fn title(self) -> &'static str {
+        match self {
+            BarMode::Visible => "Painted parts only",
+            BarMode::Whole => "Whole bar",
+        }
+    }
+    pub fn parse(s: &str) -> Option<BarMode> {
+        BarMode::ALL.into_iter().find(|m| m.name() == s.to_ascii_lowercase())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -80,7 +110,7 @@ pub struct Config {
     pub intensity: f32,
     /// Overall opacity, 0.1..=1.
     pub opacity: f32,
-    /// Size of one "pixel" in the pixel renderer, 2..=10 screen pixels.
+    /// Size of one "pixel" in the pixel renderer, 1..=10 screen pixels.
     pub pixel_size: u32,
     /// Colour steps per channel in the pixel renderer, 2..=16.
     pub pixel_levels: u32,
@@ -92,6 +122,8 @@ pub struct Config {
     pub windows: bool,
     /// Collect on bars and panels (Waybar, Quickshell...).
     pub layers: bool,
+    /// Which part of a bar collects things.
+    pub bar_mode: BarMode,
     /// Keep drawing above fullscreen windows.
     pub over_fullscreen: bool,
     /// React to the cursor.
@@ -108,12 +140,13 @@ impl Default for Config {
             renderer: Renderer::Smooth,
             intensity: 0.5,
             opacity: 0.9,
-            pixel_size: 4,
-            pixel_levels: 6,
+            pixel_size: 2,
+            pixel_levels: 8,
             melt: true,
             ground: true,
             windows: true,
             layers: true,
+            bar_mode: BarMode::Visible,
             over_fullscreen: false,
             interact: true,
             wind: 0.0,
@@ -125,7 +158,7 @@ impl Config {
     pub fn clamp(&mut self) {
         self.intensity = self.intensity.clamp(0.0, 1.0);
         self.opacity = self.opacity.clamp(0.1, 1.0);
-        self.pixel_size = self.pixel_size.clamp(2, 10);
+        self.pixel_size = self.pixel_size.clamp(1, 10);
         self.pixel_levels = self.pixel_levels.clamp(2, 16);
         self.wind = self.wind.clamp(-1.0, 1.0);
     }
@@ -174,6 +207,7 @@ pub struct Patch {
     pub ground: Option<bool>,
     pub windows: Option<bool>,
     pub layers: Option<bool>,
+    pub bar_mode: Option<BarMode>,
     pub over_fullscreen: Option<bool>,
     pub interact: Option<bool>,
     pub wind: Option<f32>,
@@ -186,7 +220,7 @@ impl Config {
         macro_rules! set {
             ($($f:ident),*) => { $( if let Some(v) = p.$f { self.$f = v; } )* };
         }
-        set!(enabled, effect, renderer, intensity, opacity, pixel_size, pixel_levels, melt, ground, windows, layers, over_fullscreen, interact, wind);
+        set!(enabled, effect, renderer, intensity, opacity, pixel_size, pixel_levels, melt, ground, windows, layers, bar_mode, over_fullscreen, interact, wind);
         self.clamp();
         *self != before
     }

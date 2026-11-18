@@ -28,6 +28,8 @@ pub struct Surf {
     pub kind: SurfKind,
     /// How far in from each end the top edge starts (rounded corners).
     pub inset: f32,
+    /// False while the surface exists but isn't on screen (another workspace): it keeps what lies on it.
+    pub shown: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -50,6 +52,8 @@ pub struct Params {
     pub layers: bool,
     /// Pixel renderer: fewer, chunkier things.
     pub pixel: bool,
+    /// Logical pixels per art pixel in the pixel renderer; 0 when smooth.
+    pub pixel_size: f32,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -74,9 +78,19 @@ struct P {
     life: f32,
 }
 
+/// A pile that is coming apart: carried along by a moving window, or left behind by a closed one.
+struct Shed {
+    pile: Pile,
+    follow: Option<u64>,
+    /// Fraction of the pile that lets go each second.
+    rate: f32,
+    acc: f32,
+}
+
 pub struct World {
     parts: Vec<P>,
     piles: HashMap<u64, Pile>,
+    sheds: Vec<Shed>,
     flowers: HashMap<u64, flowers::Bed>,
     rng: Rng,
     time: f32,
@@ -94,6 +108,7 @@ impl World {
         World {
             parts: Vec::new(),
             piles: HashMap::new(),
+            sheds: Vec::new(),
             flowers: HashMap::new(),
             rng: Rng::new(seed),
             time: 0.0,
@@ -116,51 +131,70 @@ impl World {
     pub fn clear(&mut self) {
         let ids: Vec<u64> = self.piles.keys().copied().collect();
         for id in ids {
-            self.release(id);
+            if let Some(pile) = self.piles.remove(&id) {
+                self.spill(&pile);
+            }
+        }
+        for sh in std::mem::take(&mut self.sheds) {
+            self.spill(&sh.pile);
         }
         self.flowers.clear();
     }
 
-    /// Takes new surface geometry: piles follow, or slide off when their surface moved or vanished.
+    /// Takes new surface geometry: piles follow their surface, wait while it is off screen, and come apart
+    /// gradually when it moves or goes away.
     pub fn set_scene(&mut self, scene: Scene) {
-        let mut gone: Vec<u64> = Vec::new();
+        let mut carried: Vec<u64> = Vec::new();
+        let mut vanished: Vec<u64> = Vec::new();
         for (id, pile) in self.piles.iter_mut() {
             match scene.surfs.iter().find(|s| s.id == *id) {
-                None => gone.push(*id),
+                None => vanished.push(*id),
+                Some(s) if !s.shown => pile.dormant = true,
                 Some(s) => {
-                    let moved = (s.rect.x - pile.x0).abs() > 4.0 || (s.rect.y - pile.base).abs() > 4.0;
-                    let resized = (s.rect.w - pile.width()).abs() > 0.5;
+                    let moved = (s.rect.x + s.inset - pile.x0).abs() > 4.0 || (s.rect.y - pile.base).abs() > 4.0;
+                    let width = (s.rect.w - 2.0 * s.inset).max(0.0);
+                    pile.dormant = false;
                     if moved {
-                        gone.push(*id);
-                    } else if resized {
-                        pile.resize(s.rect.x + s.inset, (s.rect.w - 2.0 * s.inset).max(0.0), s.rect.y);
+                        carried.push(*id);
+                    } else if (width - pile.width()).abs() > pile::CELL {
+                        pile.resize(s.rect.x + s.inset, width, s.rect.y);
                     } else {
                         pile.base = s.rect.y;
                     }
                 }
             }
         }
-        for id in gone {
-            self.release(id);
+        for id in carried {
+            if let Some(pile) = self.piles.remove(&id) {
+                self.sheds.push(Shed { pile, follow: Some(id), rate: 0.7, acc: 0.0 });
+            }
         }
-        // Flowers just follow their surface; ones whose surface moved away are dropped.
+        for id in vanished {
+            if let Some(pile) = self.piles.remove(&id) {
+                self.sheds.push(Shed { pile, follow: None, rate: 1.8, acc: 0.0 });
+            }
+        }
+        // What a moving window carries rides along with it until it has all slid off.
+        for sh in &mut self.sheds {
+            if let Some(id) = sh.follow {
+                match scene.surfs.iter().find(|s| s.id == id && s.shown) {
+                    Some(s) => sh.pile.carry(s.rect.x + s.inset, (s.rect.w - 2.0 * s.inset).max(0.0), s.rect.y),
+                    None => sh.follow = None,
+                }
+            }
+        }
         self.flowers.retain(|id, bed| match scene.surfs.iter().find(|s| s.id == *id) {
             None => false,
             Some(s) => {
-                if (s.rect.x - bed.x0).abs() > 4.0 || (s.rect.y - bed.base).abs() > 4.0 {
-                    false
-                } else {
-                    bed.follow(s);
-                    true
-                }
+                bed.follow(s);
+                true
             }
         });
         self.scene = scene;
     }
 
-    /// Turns a pile into falling chunks, then forgets it.
-    fn release(&mut self, id: u64) {
-        let Some(pile) = self.piles.remove(&id) else { return };
+    /// Turns a pile into falling chunks at once.
+    fn spill(&mut self, pile: &Pile) {
         let cells = pile.h.len();
         let stride = (cells / 160).max(1);
         let mut i = 0;
@@ -171,23 +205,56 @@ impl World {
                 for _ in 0..n {
                     let x = pile.x0 + (i as f32 + self.rng.f()) * pile::CELL;
                     let y = pile.base - h * self.rng.f();
-                    self.parts.push(P {
-                        kind: Kind::Flake,
-                        x,
-                        y,
-                        vx: self.rng.range(-40.0, 40.0),
-                        vy: self.rng.range(-10.0, 30.0),
-                        size: self.rng.range(1.6, 3.2),
-                        phase: self.rng.f() * 6.28,
-                        spin: self.rng.range(-3.0, 3.0),
-                        col: pile.c[i],
-                        heavy: true,
-                        life: 0.0,
-                    });
+                    let c = self.chunk(x, y, pile.c[i]);
+                    self.parts.push(c);
                 }
             }
             i += stride;
         }
+    }
+
+    fn chunk(&mut self, x: f32, y: f32, col: u8) -> P {
+        P {
+            kind: Kind::Flake,
+            x,
+            y,
+            vx: self.rng.range(-40.0, 40.0),
+            vy: self.rng.range(-10.0, 30.0),
+            size: self.rng.range(1.6, 3.2),
+            phase: self.rng.f() * 6.28,
+            spin: self.rng.range(-3.0, 3.0),
+            col,
+            heavy: true,
+            life: 0.0,
+        }
+    }
+
+    /// Lets a share of every coming-apart pile go this frame.
+    fn shed_step(&mut self, dt: f32) {
+        let mut sheds = std::mem::take(&mut self.sheds);
+        for sh in &mut sheds {
+            let cells = sh.pile.h.len();
+            sh.acc += cells as f32 * sh.rate * dt;
+            while sh.acc >= 1.0 {
+                sh.acc -= 1.0;
+                let i = self.rng.below(cells);
+                let h = sh.pile.h[i];
+                if h > 0.2 && self.parts.len() < MAX_PARTS {
+                    let n = ((h / 2.5).ceil() as usize).min(4);
+                    for _ in 0..n {
+                        let x = sh.pile.x0 + (i as f32 + self.rng.f()) * pile::CELL;
+                        let y = sh.pile.base - h * self.rng.f();
+                        let c = self.chunk(x, y, sh.pile.c[i]);
+                        self.parts.push(c);
+                    }
+                    sh.pile.h[i] = 0.0;
+                }
+            }
+            // Slump what is left so the edges of the gap look natural.
+            sh.pile.relax(dt);
+        }
+        sheds.retain(|sh| sh.pile.total() > 0.3);
+        self.sheds = sheds;
     }
 
     pub fn step(&mut self, dt: f32, p: &Params) {
@@ -202,6 +269,7 @@ impl World {
         self.spawn(dt, p);
         self.move_parts(dt, p);
         self.piles_step(dt, p);
+        self.shed_step(dt);
         if p.effect == Effect::Flowers {
             self.flowers_step(dt, p);
         } else if !self.flowers.is_empty() {
@@ -320,7 +388,7 @@ impl World {
                     SurfKind::Window => p.windows,
                     SurfKind::Layer => p.layers,
                 };
-                if !usable || s.rect.w - 2.0 * s.inset <= 4.0 {
+                if !usable || !s.shown || s.rect.w - 2.0 * s.inset <= 4.0 {
                     continue;
                 }
                 if q.x < s.rect.x + s.inset || q.x >= s.rect.right() - s.inset {
@@ -340,7 +408,7 @@ impl World {
             if let Some((id, top)) = best {
                 if accumulate {
                     let col = q.col;
-                    let amt = (q.size * q.size).sqrt() * if p.effect == Effect::Snow { 0.32 } else { 0.5 };
+                    let amt = (q.size * q.size).sqrt() * if p.effect == Effect::Snow { 0.64 } else { 1.0 };
                     if let Some(s) = self.scene.surfs.iter().find(|s| s.id == id) {
                         let (x0, wd, base) = (s.rect.x + s.inset, (s.rect.w - 2.0 * s.inset).max(0.0), s.rect.y);
                         let cap = if s.kind == SurfKind::Ground { 46.0 } else { 20.0 };
@@ -381,7 +449,7 @@ impl World {
         let cursor = if p.interact && speed > 90.0 { self.scene.cursor } else { None };
         let melt = p.melt;
         let mut spawned: Vec<P> = Vec::new();
-        for pile in self.piles.values_mut() {
+        for pile in self.piles.values_mut().filter(|p| !p.dormant) {
             pile.relax(dt);
             if melt {
                 // Thaws slowly: about an hour for a deep drift.
@@ -409,35 +477,38 @@ impl World {
             }
         }
         self.parts.extend(spawned);
-        self.piles.retain(|_, pl| pl.total() > 0.05 || pl.fresh());
+        self.piles.retain(|_, pl| pl.dormant || pl.total() > 0.05 || pl.fresh());
     }
 
     fn flowers_step(&mut self, dt: f32, p: &Params) {
         let cursor = if p.interact { self.scene.cursor } else { None };
-        let time = self.time;
         for s in &self.scene.surfs {
             let usable = match s.kind {
                 SurfKind::Ground => p.ground,
                 SurfKind::Window => p.windows,
                 SurfKind::Layer => p.layers,
             };
-            if !usable || s.rect.w - 2.0 * s.inset <= 12.0 {
+            if !usable || !s.shown || s.rect.w - 2.0 * s.inset <= 6.0 {
                 continue;
             }
             let hidden_at = |x: f32| s.kind != SurfKind::Ground && self.scene.surfs.iter().any(|o| o.id != s.id && o.z > s.z && o.rect.contains(x, s.rect.y + 2.0));
             let bed = self.flowers.entry(s.id).or_insert_with(|| flowers::Bed::new(s));
-            bed.step(dt, time, p.intensity, cursor, &mut self.rng, &hidden_at);
+            bed.step(dt, p.intensity, s.inset, cursor, &mut self.rng, &hidden_at);
         }
     }
 
     pub fn draw(&self, b: &mut Batch, p: &Params) {
         // Flowers and piles first, falling things over them.
-        for (id, pile) in &self.piles {
-            let _ = id;
+        for pile in self.piles.values().filter(|pl| !pl.dormant) {
             pile.draw(b, p.effect, self.time, p.pixel);
         }
-        for bed in self.flowers.values() {
-            bed.draw(b, self.time, p.pixel);
+        for sh in &self.sheds {
+            sh.pile.draw(b, p.effect, self.time, p.pixel);
+        }
+        for (id, bed) in &self.flowers {
+            if self.scene.surfs.iter().any(|s| s.id == *id && s.shown) {
+                bed.draw(b, p.pixel_size);
+            }
         }
         let colors = flake_colors(p.effect);
         for q in &self.parts {
