@@ -65,6 +65,8 @@ pub struct Opts {
     pub opacity: f32,
     /// `Some((art pixel size in logical px, colour levels))` for the pixel renderer.
     pub pixel: Option<(u32, u32)>,
+    /// Rectangles (x, y, w, h in buffer pixels, y down) left empty, so a bar can be photographed bare.
+    pub clear: Vec<[i32; 4]>,
 }
 
 struct Prog {
@@ -227,6 +229,15 @@ impl Gpu {
                     gl.disable_vertex_attrib_array(2);
                     gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
                 }
+            }
+            if !o.clear.is_empty() {
+                gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+                gl.enable(glow::SCISSOR_TEST);
+                for [x, y, w, h] in &o.clear {
+                    gl.scissor(*x, o.buf.1 - y - h, *w, *h);
+                    gl.clear(glow::COLOR_BUFFER_BIT);
+                }
+                gl.disable(glow::SCISSOR_TEST);
             }
             gl.flush();
         }

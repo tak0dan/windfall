@@ -16,7 +16,7 @@ use snowhush_core::sim::{Surf, SurfKind};
 use snowhush_core::draw::Batch;
 use snowhush_core::ipc::{Request, Response, State};
 use snowhush_core::sim::{Params, Scene, World};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -75,7 +75,8 @@ struct App {
     /// What each bar layer turned out to look like; `None` means it could not be examined.
     masks: HashMap<u64, Option<Vec<shape::Segment>>>,
     calibration: HashMap<String, Calibration>,
-    hidden: HashSet<String>,
+    /// Bar rectangles per monitor that are kept bare while they are being photographed.
+    bare: HashMap<String, Vec<[i32; 4]>>,
     send: calloop::channel::Sender<Msg>,
     batch: Batch,
     last_tick: Instant,
@@ -86,6 +87,7 @@ struct App {
     quit: bool,
     debug: bool,
     debug_at: Instant,
+    cal_at: Instant,
 }
 
 impl App {
@@ -102,6 +104,7 @@ impl App {
             layers: c.layers,
             pixel: c.renderer == Renderer::Pixel,
             pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
+            glow: snowhush_core::palette::parse_hex(&c.glow_color).unwrap_or([1.0, 0.85, 0.3]),
         }
     }
 
@@ -230,6 +233,14 @@ impl App {
                 let _ = self.config.save();
             }
         }
+        // Bars change on their own (modules come, go and resize), so look at them again every so often.
+        if now.duration_since(self.cal_at) >= Duration::from_millis(1000) {
+            self.cal_at = now;
+            let names: Vec<String> = self.scenes.keys().cloned().collect();
+            for n in &names {
+                self.calibrate(n);
+            }
+        }
         let params = self.params();
         let Some(g) = &self.gpu else { return };
         let debug_now = self.debug && now.duration_since(self.debug_at).as_secs() >= 2;
@@ -241,9 +252,7 @@ impl App {
             }
             m.world.step(dt, &params);
             self.batch.clear();
-            if !m.name.as_ref().is_some_and(|n| self.hidden.contains(n)) {
-                m.world.draw(&mut self.batch, &params);
-            }
+            m.world.draw(&mut self.batch, &params);
             let scale = ov.frac_scale.unwrap_or(m.int_scale.max(1) as f32);
             let buf = (((ov.size.0 as f32 * scale).round() as i32).max(1), ((ov.size.1 as f32 * scale).round() as i32).max(1));
             let opts = gpu::Opts {
@@ -252,9 +261,10 @@ impl App {
                 scale,
                 opacity: self.config.opacity,
                 pixel: (self.config.renderer == Renderer::Pixel).then_some((self.config.pixel_size, self.config.pixel_levels)),
+                clear: m.name.as_ref().and_then(|n| self.bare.get(n)).map(|v| v.iter().map(|r| [(r[0] as f32 * scale) as i32, (r[1] as f32 * scale) as i32, (r[2] as f32 * scale).ceil() as i32, (r[3] as f32 * scale).ceil() as i32]).collect()).unwrap_or_default(),
             };
             if self.debug && now.duration_since(self.debug_at).as_secs() >= 2 {
-                eprintln!("snowhushd: {} parts={} verts={} buf={:?}", m.name.as_deref().unwrap_or("?"), m.world.particle_count(), self.batch.vertex_count(), buf);
+                eprintln!("snowhushd: {} parts={} verts={} mass={:.0} buf={:?}", m.name.as_deref().unwrap_or("?"), m.world.particle_count(), self.batch.vertex_count(), m.world.pile_mass(), buf);
             }
             g.draw(target, &self.batch.data, &opts);
         }
@@ -311,15 +321,16 @@ impl App {
             return;
         }
         let cal = self.calibration.get(name);
-        if cal.is_some_and(|c| c.busy || (c.key == layers && c.at.elapsed() < Duration::from_secs(60))) {
+        if cal.is_some_and(|c| c.busy || (c.key == layers && c.at.elapsed() < Duration::from_millis(1200))) {
             return;
         }
         self.calibration.insert(name.to_string(), Calibration { key: layers.clone(), at: Instant::now(), busy: true });
         let (tx, monitor) = (self.send.clone(), name.to_string());
         std::thread::spawn(move || {
-            // Blank our own drawing for a moment so only the bar itself is photographed.
-            let _ = tx.send(Msg::Hide { monitor: monitor.clone(), hidden: true });
-            std::thread::sleep(Duration::from_millis(110));
+            // Keep our own drawing off the bars for a moment so only the bars themselves are photographed.
+            let bands: Vec<[i32; 4]> = layers.iter().map(|(_, r)| *r).collect();
+            let _ = tx.send(Msg::Hide { monitor: monitor.clone(), bands });
+            std::thread::sleep(Duration::from_millis(80));
             for (id, [x, y, w, h]) in &layers {
                 let rows = (*h).min(40);
                 let segs = capture::grab(&monitor, (*x, *y, *w, rows)).and_then(|img| {
@@ -359,11 +370,11 @@ impl App {
                 }
                 self.reconcile();
             }
-            Msg::Hide { monitor, hidden } => {
-                if hidden {
-                    self.hidden.insert(monitor);
+            Msg::Hide { monitor, bands } => {
+                if bands.is_empty() {
+                    self.bare.remove(&monitor);
                 } else {
-                    self.hidden.remove(&monitor);
+                    self.bare.insert(monitor, bands);
                 }
             }
             Msg::Mask { id, segs } => {
@@ -377,7 +388,7 @@ impl App {
                 }
             }
             Msg::Calibrated { monitor, key } => {
-                self.hidden.remove(&monitor);
+                self.bare.remove(&monitor);
                 self.calibration.insert(monitor, Calibration { key, at: Instant::now(), busy: false });
             }
             Msg::Patch(p) => self.apply(&p),
@@ -554,7 +565,7 @@ fn main() {
         scenes: HashMap::new(),
         masks: HashMap::new(),
         calibration: HashMap::new(),
-        hidden: HashSet::new(),
+        bare: HashMap::new(),
         send: tx.clone(),
         batch: Batch::default(),
         last_tick: Instant::now(),
@@ -565,6 +576,7 @@ fn main() {
         quit: false,
         debug: std::env::var_os("SNOWHUSH_DEBUG").is_some(),
         debug_at: Instant::now(),
+        cal_at: Instant::now(),
     };
 
     // Outputs that already exist; later ones arrive as registry events.

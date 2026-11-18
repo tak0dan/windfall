@@ -4,7 +4,7 @@ use snowhush_core::geom::Rect;
 use snowhush_core::sim::*;
 
 fn params(effect: Effect) -> Params {
-    Params { effect, intensity: 1.0, melt: false, interact: true, wind: 0.0, ground: true, windows: true, layers: true, pixel: false, pixel_size: 0.0 }
+    Params { effect, intensity: 1.0, melt: false, interact: true, wind: 0.0, ground: true, windows: true, layers: true, pixel: false, pixel_size: 0.0, glow: [1.0, 0.85, 0.3] }
 }
 
 fn scene(cursor: Option<[f32; 2]>) -> Scene {
@@ -203,4 +203,47 @@ mod shape {
         }
         assert!(segments(&Strip { data: &n, w, h, stride: w * 4 }).is_empty());
     }
+}
+
+#[test]
+fn bar_that_shrinks_drops_what_lay_on_the_lost_part() {
+    let bar = |x0: f32, w: f32| Scene {
+        w: 1920.0,
+        h: 1080.0,
+        surfs: vec![Surf { id: 9, rect: Rect::new(x0, 1000.0, w, 30.0), z: 1000, kind: SurfKind::Layer, inset: 0.0, shown: true }],
+        cursor: None,
+    };
+    let mut w = World::new(11);
+    w.set_scene(bar(300.0, 800.0));
+    let p = params(Effect::Snow);
+    run(&mut w, &p, 90.0);
+    assert!(w.pile_height(9, 1000.0) > 1.0);
+    let before = w.pile_height(9, 400.0);
+    // The painted part loses its right half.
+    w.set_scene(bar(300.0, 400.0));
+    assert_eq!(w.pile_height(9, 1000.0), 0.0, "the lost part must no longer hold snow");
+    assert!(w.pile_height(9, 400.0) >= before * 0.9, "the part that is still painted keeps its snow");
+    let still = Params { intensity: 0.0, ..params(Effect::Snow) };
+    run(&mut w, &still, 0.3);
+    assert!(w.particle_count() > 5, "it falls");
+}
+
+#[test]
+fn flowers_on_a_lost_stretch_puff_away() {
+    let bar = |w: f32| Scene {
+        w: 1920.0,
+        h: 1080.0,
+        surfs: vec![Surf { id: 9, rect: Rect::new(300.0, 1000.0, w, 30.0), z: 1000, kind: SurfKind::Layer, inset: 0.0, shown: true }],
+        cursor: None,
+    };
+    let mut w = World::new(12);
+    w.set_scene(bar(800.0));
+    let p = params(Effect::Flowers);
+    run(&mut w, &p, 30.0);
+    w.set_scene(bar(300.0));
+    let mut b = Batch::default();
+    w.draw(&mut b, &p);
+    // Blue puffs are drawn with colour (0.35, 0.62, 1.0).
+    let blue = b.data.chunks(8).filter(|v| (v[4] - 0.35).abs() < 1e-3 && (v[5] - 0.62).abs() < 1e-3 && (v[6] - 1.0).abs() < 1e-3).count();
+    assert!(blue > 0, "no puffs");
 }

@@ -14,6 +14,7 @@ usage: snowhushctl <command>
   opacity <10-100>      overall opacity
   pixel-size <1-10>     size of one art pixel (pixel renderer)
   bars <visible|whole>  grow on a bar's painted parts only, or on all of it
+  glow <#rrggbb>        colour of the flowers' glow
   wind <-100..100>      sideways drift
   set <key>=<value>...  melt, ground, windows, layers, interact, over_fullscreen = true|false
   clear                 sweep away everything that has settled
@@ -68,6 +69,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "opacity" => set(Patch { opacity: Some(num(args.get(1), 10.0, 100.0)? / 100.0), ..Default::default() }),
         "pixel-size" => set(Patch { pixel_size: Some(num(args.get(1), 1.0, 10.0)? as u32), ..Default::default() }),
         "bars" => set(Patch { bar_mode: Some(args.get(1).and_then(|s| BarMode::parse(s)).ok_or("expected visible or whole")?), ..Default::default() }),
+        "glow" => set(Patch { glow_color: Some(args.get(1).filter(|c| snowhush_core::palette::parse_hex(c).is_some()).ok_or("expected a colour like #ffd84d")?.clone()), ..Default::default() }),
         "wind" => set(Patch { wind: Some(num(args.get(1), -100.0, 100.0)? / 100.0), ..Default::default() }),
         "set" => {
             let mut p = Patch::default();

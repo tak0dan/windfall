@@ -54,6 +54,8 @@ pub struct Params {
     pub pixel: bool,
     /// Logical pixels per art pixel in the pixel renderer; 0 when smooth.
     pub pixel_size: f32,
+    /// Colour of the flowers' glow and sparks.
+    pub glow: Rgb,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -81,6 +83,14 @@ struct P {
 }
 
 /// A pile that is coming apart: carried along by a moving window, or left behind by a closed one.
+struct Puff {
+    x: f32,
+    y: f32,
+    vx: f32,
+    vy: f32,
+    life: f32,
+}
+
 struct Shed {
     pile: Pile,
     follow: Option<u64>,
@@ -93,6 +103,8 @@ pub struct World {
     parts: Vec<P>,
     piles: HashMap<u64, Pile>,
     sheds: Vec<Shed>,
+    /// Blue puffs of what lost the ground under it.
+    puffs: Vec<Puff>,
     flowers: HashMap<u64, flowers::Bed>,
     rng: Rng,
     time: f32,
@@ -111,6 +123,7 @@ impl World {
             parts: Vec::new(),
             piles: HashMap::new(),
             sheds: Vec::new(),
+            puffs: Vec::new(),
             flowers: HashMap::new(),
             rng: Rng::new(seed),
             time: 0.0,
@@ -124,6 +137,10 @@ impl World {
 
     pub fn particle_count(&self) -> usize {
         self.parts.len()
+    }
+    /// Everything that lies: the sum of all pile heights.
+    pub fn pile_mass(&self) -> f32 {
+        self.piles.values().map(|p| p.total()).sum::<f32>() + self.sheds.iter().map(|s| s.pile.total()).sum::<f32>()
     }
     pub fn pile_height(&self, id: u64, x: f32) -> f32 {
         self.piles.get(&id).map_or(0.0, |p| p.height_at(x))
@@ -148,10 +165,21 @@ impl World {
     pub fn set_scene(&mut self, scene: Scene) {
         let mut carried: Vec<u64> = Vec::new();
         let mut vanished: Vec<u64> = Vec::new();
+        let mut cut: Vec<Pile> = Vec::new();
         for (id, pile) in self.piles.iter_mut() {
             match scene.surfs.iter().find(|s| s.id == *id) {
                 None => vanished.push(*id),
                 Some(s) if !s.shown => pile.dormant = true,
+                Some(s) if s.kind == SurfKind::Layer => {
+                    // A bar stays put. Its painted parts come and go, and what is left without ground falls.
+                    pile.dormant = false;
+                    if (s.rect.y - pile.base).abs() > 4.0 {
+                        vanished.push(*id);
+                    } else {
+                        cut.extend(pile.fit(s.rect.x + s.inset, s.rect.right() - s.inset));
+                        pile.base = s.rect.y;
+                    }
+                }
                 Some(s) => {
                     let moved = (s.rect.x + s.inset - pile.x0).abs() > 4.0 || (s.rect.y - pile.base).abs() > 4.0;
                     let width = (s.rect.w - 2.0 * s.inset).max(0.0);
@@ -165,6 +193,9 @@ impl World {
                     }
                 }
             }
+        }
+        for pile in cut {
+            self.sheds.push(Shed { pile, follow: None, rate: 2.2, acc: 0.0 });
         }
         for id in carried {
             if let Some(pile) = self.piles.remove(&id) {
@@ -185,14 +216,26 @@ impl World {
                 }
             }
         }
+        // Flowers whose ground vanished (a bar that shrank or went away) puff into blue sparks.
+        let mut lost: Vec<[f32; 2]> = Vec::new();
         let rng = &mut self.rng;
         self.flowers.retain(|id, bed| match scene.surfs.iter().find(|s| s.id == *id) {
-            None => false,
+            None => {
+                lost.extend(bed.heads());
+                false
+            }
             Some(s) => {
-                bed.follow(s, rng);
+                lost.extend(bed.follow(s, rng));
                 true
             }
         });
+        for h in lost.into_iter().take(400) {
+            for _ in 0..5 {
+                let a = self.rng.range(0.0, std::f32::consts::TAU);
+                let v = self.rng.range(10.0, 46.0);
+                self.puffs.push(Puff { x: h[0], y: h[1], vx: a.cos() * v, vy: a.sin() * v - 16.0, life: self.rng.range(0.4, 0.85) });
+            }
+        }
         self.scene = scene;
     }
 
@@ -276,6 +319,14 @@ impl World {
         self.move_parts(dt, p);
         self.piles_step(dt, p);
         self.shed_step(dt);
+        for pf in &mut self.puffs {
+            pf.life -= dt;
+            pf.vy += 60.0 * dt;
+            pf.vx *= 1.0 - 2.0 * dt;
+            pf.x += pf.vx * dt;
+            pf.y += pf.vy * dt;
+        }
+        self.puffs.retain(|pf| pf.life > 0.0);
         if p.effect == Effect::Flowers {
             self.flowers_step(dt, p);
         } else if !self.flowers.is_empty() {
@@ -516,8 +567,11 @@ impl World {
         }
         for (id, bed) in &self.flowers {
             if self.scene.surfs.iter().any(|s| s.id == *id && s.shown) {
-                bed.draw(b, p.pixel_size);
+                bed.draw(b, p.pixel_size, p.glow);
             }
+        }
+        for pf in &self.puffs {
+            b.disc(pf.x, pf.y, if p.pixel_size > 0.0 { p.pixel_size * 0.6 } else { 1.0 }, [0.35, 0.62, 1.0, (pf.life * 2.5).clamp(0.0, 1.0)]);
         }
         let colors = flake_colors(p.effect);
         for q in &self.parts {

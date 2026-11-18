@@ -24,6 +24,16 @@ pub fn hex(c: Rgb) -> String {
     format!("#{:02x}{:02x}{:02x}", b(c[0]), b(c[1]), b(c[2]))
 }
 
+/// `#rrggbb` (or `rrggbb`) to 0..1 channels.
+pub fn parse_hex(s: &str) -> Option<Rgb> {
+    let h = s.trim().trim_start_matches('#');
+    if h.len() != 6 || !h.is_ascii() {
+        return None;
+    }
+    let v = u32::from_str_radix(h, 16).ok()?;
+    Some([((v >> 16) & 255) as f32 / 255.0, ((v >> 8) & 255) as f32 / 255.0, (v & 255) as f32 / 255.0])
+}
+
 pub const SNOW: &[Rgb] = &[[1.0, 1.0, 1.0], [0.92, 0.96, 1.0], [0.85, 0.92, 1.0]];
 pub const LEAVES: &[Rgb] = &[[0.80, 0.33, 0.08], [0.92, 0.62, 0.10], [0.66, 0.18, 0.10], [0.55, 0.42, 0.08], [0.85, 0.45, 0.12]];
 pub const BLOSSOM: &[Rgb] = &[[1.0, 0.72, 0.80], [0.98, 0.58, 0.70], [1.0, 0.85, 0.90], [0.93, 0.50, 0.66]];

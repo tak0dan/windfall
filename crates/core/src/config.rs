@@ -130,6 +130,8 @@ pub struct Config {
     pub interact: bool,
     /// Sideways drift, -1..=1.
     pub wind: f32,
+    /// Colour of the flowers' glow and of the sparks when one gives way to a new one (`#rrggbb`).
+    pub glow_color: String,
 }
 
 impl Default for Config {
@@ -150,6 +152,7 @@ impl Default for Config {
             over_fullscreen: false,
             interact: true,
             wind: 0.0,
+            glow_color: "#ffd84d".into(),
         }
     }
 }
@@ -161,6 +164,9 @@ impl Config {
         self.pixel_size = self.pixel_size.clamp(1, 10);
         self.pixel_levels = self.pixel_levels.clamp(2, 16);
         self.wind = self.wind.clamp(-1.0, 1.0);
+        if crate::palette::parse_hex(&self.glow_color).is_none() {
+            self.glow_color = "#ffd84d".into();
+        }
     }
 
     pub fn path() -> PathBuf {
@@ -211,6 +217,7 @@ pub struct Patch {
     pub over_fullscreen: Option<bool>,
     pub interact: Option<bool>,
     pub wind: Option<f32>,
+    pub glow_color: Option<String>,
 }
 
 impl Config {
@@ -222,6 +229,11 @@ impl Config {
         }
         set!(enabled, effect, renderer, intensity, opacity, pixel_size, pixel_levels, melt, ground, windows, layers, bar_mode, over_fullscreen, interact, wind);
         self.clamp();
+        if let Some(g) = &p.glow_color {
+            if crate::palette::parse_hex(g).is_some() {
+                self.glow_color = g.to_ascii_lowercase();
+            }
+        }
         *self != before
     }
 }

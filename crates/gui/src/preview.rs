@@ -86,6 +86,7 @@ fn params(c: &Config) -> Params {
         layers: true,
         pixel: c.renderer == Renderer::Pixel,
         pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
+        glow: snowhush_core::palette::parse_hex(&c.glow_color).unwrap_or([1.0, 0.85, 0.3]),
     }
 }
 

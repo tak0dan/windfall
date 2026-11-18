@@ -54,6 +54,8 @@ struct Ui {
     windows: adw::SwitchRow,
     layers: adw::SwitchRow,
     bar_mode: adw::ComboRow,
+    glow_row: adw::ActionRow,
+    glow_button: gtk::ColorDialogButton,
     interact: adw::SwitchRow,
     over_fs: adw::SwitchRow,
     banner: adw::Banner,
@@ -90,6 +92,10 @@ impl Ui {
         self.layers.set_active(c.layers);
         self.bar_mode.set_selected(BarMode::ALL.iter().position(|m| *m == c.bar_mode).unwrap_or(0) as u32);
         self.bar_mode.set_sensitive(c.layers);
+        self.glow_row.set_visible(c.effect == Effect::Flowers);
+        if let Some(rgb) = snowhush_core::palette::parse_hex(&c.glow_color) {
+            self.glow_button.set_rgba(&gtk::gdk::RGBA::new(rgb[0], rgb[1], rgb[2], 1.0));
+        }
         self.interact.set_active(c.interact);
         self.over_fs.set_active(c.over_fullscreen);
         self.preview.set_config(c);
@@ -194,6 +200,10 @@ fn build(app: &adw::Application) {
     let layers = switch_row("Bars and panels", "Waybar, Quickshell and other shell surfaces");
     let bar_mode = adw::ComboRow::builder().title("Bars hold things on").subtitle("Transparent bars: only their visible modules").build();
     bar_mode.set_model(Some(&gtk::StringList::new(&BarMode::ALL.map(|m| m.title()))));
+    let glow_button = gtk::ColorDialogButton::new(Some(gtk::ColorDialog::new()));
+    glow_button.set_valign(gtk::Align::Center);
+    let glow_row = adw::ActionRow::builder().title("Glow colour").subtitle("Flowers glow and sparkle in this colour").build();
+    glow_row.add_suffix(&glow_button);
     let interact = switch_row("React to the cursor", "Push snow aside, brush flowers");
     let over_fs = switch_row("Over fullscreen", "Keep drawing above fullscreen windows");
     let behaviour = adw::PreferencesGroup::new();
@@ -201,6 +211,7 @@ fn build(app: &adw::Application) {
         behaviour.add(r);
     }
     behaviour.add(&bar_mode);
+    behaviour.add(&glow_row);
     for r in [&interact, &over_fs] {
         behaviour.add(r);
     }
@@ -234,6 +245,8 @@ fn build(app: &adw::Application) {
         windows,
         layers,
         bar_mode,
+        glow_row,
+        glow_button,
         interact,
         over_fs,
         banner,
@@ -274,6 +287,14 @@ fn build(app: &adw::Application) {
     toggle!(windows, windows);
     toggle!(layers, layers);
     toggle!(interact, interact);
+    {
+        let ui2 = ui.clone();
+        ui.glow_button.connect_rgba_notify(move |b| {
+            let c = b.rgba();
+            let hex = snowhush_core::palette::hex([c.red(), c.green(), c.blue()]);
+            ui2.patch(Patch { glow_color: Some(hex), ..Default::default() })
+        });
+    }
     {
         let ui2 = ui.clone();
         ui.bar_mode.connect_selected_notify(move |r| {

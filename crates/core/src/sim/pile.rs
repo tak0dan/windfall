@@ -46,6 +46,43 @@ impl Pile {
         self.h = h;
         self.c = c;
     }
+    /// Keeps the pile where it is but makes it cover exactly `lo..hi` (a bar whose painted part grew or
+    /// shrank). What no longer has ground under it comes back as separate pieces, still at its old place.
+    pub fn fit(&mut self, lo: f32, hi: f32) -> Vec<Pile> {
+        let n = self.h.len() as i64;
+        let ia = ((lo - self.x0) / CELL - 0.5).ceil() as i64;
+        let ib = (((hi - self.x0) / CELL - 0.5).floor() as i64 + 1).max(ia + 1);
+        let mut cut = Vec::new();
+        let piece = |from: i64, to: i64, me: &Pile| -> Option<Pile> {
+            let (from, to) = (from.clamp(0, n), to.clamp(0, n));
+            if to <= from {
+                return None;
+            }
+            let (f, t) = (from as usize, to as usize);
+            let mut p = Pile::new(me.x0 + from as f32 * CELL, (t - f) as f32 * CELL, me.base);
+            p.h.copy_from_slice(&me.h[f..t]);
+            p.c.copy_from_slice(&me.c[f..t]);
+            if p.total() > 0.3 { Some(p) } else { None }
+        };
+        cut.extend(piece(0, ia, self));
+        cut.extend(piece(ib, n, self));
+        let mut h = Vec::new();
+        let mut c = Vec::new();
+        for k in ia..ib {
+            if k >= 0 && k < n {
+                h.push(self.h[k as usize]);
+                c.push(self.c[k as usize]);
+            } else {
+                h.push(0.0);
+                c.push(0);
+            }
+        }
+        self.x0 += ia as f32 * CELL;
+        self.h = h;
+        self.c = c;
+        cut
+    }
+
     /// Moves the pile along with its window, keeping every cell where it sits on the window.
     pub fn carry(&mut self, x0: f32, width: f32, base: f32) {
         let n = ((width / CELL).ceil() as usize).max(1);
@@ -155,7 +192,7 @@ impl Pile {
             let top = [col[0], col[1], col[2], 1.0];
             let deep = if effect == Effect::Snow { [0.80, 0.88, 0.97, 1.0] } else { [col[0] * 0.7, col[1] * 0.7, col[2] * 0.7, 1.0] };
             if effect != Effect::Snow {
-                self.draw_litter(b, i, x, h0, h1, colors);
+                self.draw_litter(b, effect, i, x, h0, h1, colors);
                 continue;
             }
             let (y0, y1) = (self.base - h0, self.base - h1);
@@ -169,27 +206,67 @@ impl Pile {
         }
     }
 
-    /// Leaves and petals lie in a heap: bands of mixed colour, so no column reads as a vertical stripe.
-    fn draw_litter(&self, b: &mut Batch, i: usize, x: f32, h0: f32, h1: f32, colors: &[[f32; 3]]) {
-        const BAND: f32 = 3.5;
+    /// Leaves and petals lie in a heap. The body is a smooth two-dimensional mottling (colour drifts in both
+    /// directions, so nothing reads as a vertical stripe) with individual leaves lying on and in it.
+    fn draw_litter(&self, b: &mut Batch, effect: Effect, i: usize, x: f32, h0: f32, h1: f32, colors: &[[f32; 3]]) {
+        const BAND: f32 = 4.0;
         let n = colors.len();
-        let hash = |i: usize, j: usize| ((i.wrapping_mul(73_856_093) ^ j.wrapping_mul(19_349_663)).wrapping_mul(2_654_435_761) >> 9) as usize;
-        let shade = |j: usize, depth: f32| {
-            let k = hash(i, j);
-            let c = colors[(self.c[i] as usize + k % 3) % n];
-            let f = (1.0 - 0.34 * depth) * (0.9 + 0.1 * ((k >> 4) % 3) as f32);
-            [c[0] * f, c[1] * f, c[2] * f, 1.0]
-        };
-        let top_h = h0.min(h1);
-        let full = (top_h / BAND).floor() as usize;
         let total = h0.max(h1).max(1.0);
+        // Colour at a point: value noise picks along the palette; deeper is darker.
+        let tint = |px: f32, py: f32| -> [f32; 4] {
+            let v = (0.62 * vnoise(px / 7.0, py / 6.0) + 0.38 * vnoise(px / 3.1 + 17.0, py / 2.7 + 5.0)).clamp(0.0, 0.999);
+            let t = v * (n - 1) as f32;
+            let (a, f) = (t.floor() as usize, t.fract());
+            let c = palette_mix(colors[a], colors[(a + 1).min(n - 1)], f);
+            let depth = ((self.base - py) / total).clamp(0.0, 1.0);
+            let k = 1.0 - 0.38 * depth;
+            [c[0] * k, c[1] * k, c[2] * k, 1.0]
+        };
+        let full = ((h0.min(h1)) / BAND).floor() as usize;
         for k in 0..full {
             let (yb, yt) = (self.base + 1.0 - k as f32 * BAND, self.base - (k + 1) as f32 * BAND);
-            let col = shade(k, (k as f32 * BAND) / total);
-            b.quad4([[x, yt], [x + CELL, yt], [x, yb], [x + CELL, yb]], [col; 4]);
+            b.quad4([[x, yt], [x + CELL, yt], [x, yb], [x + CELL, yb]], [tint(x, yt), tint(x + CELL, yt), tint(x, yb), tint(x + CELL, yb)]);
         }
         let yb = self.base + 1.0 - full as f32 * BAND;
-        let col = shade(full, (full as f32 * BAND) / total);
-        b.quad4([[x, self.base - h0], [x + CELL, self.base - h1], [x, yb], [x + CELL, yb]], [col; 4]);
+        let (yl, yr) = (self.base - h0, self.base - h1);
+        b.quad4([[x, yl], [x + CELL, yr], [x, yb], [x + CELL, yb]], [tint(x, yl), tint(x + CELL, yr), tint(x, yb), tint(x + CELL, yb)]);
+        // Single leaves or petals lying on and in the heap, placed by hash so they stay put as it grows.
+        let (rx, ry) = if effect == Effect::Leaves { (3.4, 1.5) } else { (2.3, 1.2) };
+        let hash = |a: usize, c: usize| -> f32 { ((a.wrapping_mul(73_856_093) ^ c.wrapping_mul(19_349_663)).wrapping_mul(2_654_435_761) >> 8 & 0xffff) as f32 / 65535.0 };
+        for k in 0..=full {
+            if hash(i, k * 7 + 1) > 0.55 {
+                continue;
+            }
+            let cx = x + hash(i, k * 7 + 2) * CELL * 2.0;
+            let cy = self.base - (k as f32 + hash(i, k * 7 + 3)) * BAND;
+            let surf = self.base - (h0 + (h1 - h0) * ((cx - x) / CELL).clamp(0.0, 1.0));
+            if cy < surf - 1.0 {
+                continue;
+            }
+            let rot = hash(i, k * 7 + 4) * std::f32::consts::PI;
+            let mut c = tint(cx, cy);
+            let lift = 0.82 + 0.4 * hash(i, k * 7 + 5);
+            c = [(c[0] * lift).min(1.0), (c[1] * lift).min(1.0), (c[2] * lift).min(1.0), 1.0];
+            b.ellipse(cx, cy, rx * (0.7 + 0.5 * hash(i, k * 7 + 6)), ry, rot, c);
+        }
     }
+}
+
+fn palette_mix(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+}
+
+/// Smooth value noise in 0..1.
+fn vnoise(x: f32, y: f32) -> f32 {
+    let (xi, yi) = (x.floor(), y.floor());
+    let (xf, yf) = (x - xi, y - yi);
+    let h = |a: i32, c: i32| -> f32 {
+        let n = (a.wrapping_mul(374_761_393) ^ c.wrapping_mul(668_265_263)).wrapping_mul(1_274_126_177);
+        ((n >> 8) & 0xffff) as f32 / 65535.0
+    };
+    let (xi, yi) = (xi as i32, yi as i32);
+    let (u, v) = (xf * xf * (3.0 - 2.0 * xf), yf * yf * (3.0 - 2.0 * yf));
+    let top = h(xi, yi) + (h(xi + 1, yi) - h(xi, yi)) * u;
+    let bot = h(xi, yi + 1) + (h(xi + 1, yi + 1) - h(xi, yi + 1)) * u;
+    top + (bot - top) * v
 }
