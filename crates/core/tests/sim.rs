@@ -256,3 +256,20 @@ fn flowers_on_a_lost_stretch_puff_away() {
     // Blue puffs are drawn with colour (0.35, 0.62, 1.0).
     assert!(seen > 0, "no puffs");
 }
+
+#[test]
+fn a_hidden_window_does_not_hide_flowers_below_it() {
+    // A floating window on another workspace (a scratchpad terminal, say) sits over the window top but is
+    // not on screen, so it must not cover anything.
+    let mut sc = scene(None);
+    sc.surfs.push(Surf { id: 5, rect: Rect::new(300.0, 250.0, 900.0, 700.0), z: 480, kind: SurfKind::Window, inset: 8.0, shown: false });
+    let mut w = World::new(21);
+    w.set_scene(sc);
+    let p = params(Effect::Flowers);
+    run(&mut w, &p, 25.0);
+    let mut b = Batch::default();
+    w.draw(&mut b, &p);
+    // Green stems and grass over the window's top edge (x 400..1000, y just above 300) must be drawn.
+    let over_window = b.data.chunks(8).filter(|v| v[0] > 420.0 && v[0] < 980.0 && v[1] > 285.0 && v[1] < 300.0).count();
+    assert!(over_window > 200, "the window's lawn is hidden: {over_window}");
+}

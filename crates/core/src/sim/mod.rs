@@ -455,7 +455,7 @@ impl World {
                 if oy <= top && q.y >= top && best.map_or(true, |(_, bt)| top < bt) {
                     // Hidden under a window in front? Then nothing rests here.
                     let hidden = s.kind != SurfKind::Ground
-                        && self.scene.surfs.iter().any(|o| o.id != s.id && o.z > s.z && o.rect.contains(q.x, s.rect.y + 2.0));
+                        && self.scene.surfs.iter().any(|o| o.id != s.id && o.shown && o.z > s.z && o.rect.contains(q.x, s.rect.y + 2.0));
                     if !hidden {
                         best = Some((s.id, top));
                     }
@@ -551,7 +551,7 @@ impl World {
             if !usable || !s.shown || s.rect.w - 2.0 * s.inset <= 6.0 {
                 continue;
             }
-            let hidden_at = |x: f32| s.kind != SurfKind::Ground && self.scene.surfs.iter().any(|o| o.id != s.id && o.z > s.z && o.rect.contains(x, s.rect.y + 2.0));
+            let hidden_at = |x: f32| s.kind != SurfKind::Ground && self.scene.surfs.iter().any(|o| o.id != s.id && o.shown && o.z > s.z && o.rect.contains(x, s.rect.y + 2.0));
             let bed = self.flowers.entry(s.id).or_insert_with(|| flowers::Bed::new(s, &mut self.rng));
             let lost = bed.step(dt, p.intensity, cursor, &mut self.rng, &hidden_at);
             puffs.extend(lost);
