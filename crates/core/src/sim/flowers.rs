@@ -538,13 +538,13 @@ impl Bed {
             let sp = match self.element {
                 Element::Fire => Spark { x: hx + rng.range(-3.0, 3.0), y: hy - 2.0, vx: rng.range(-8.0, 8.0), vy: -rng.range(15.0, 35.0), life: rng.range(0.5, 1.0), col: Some([1.0, rng.range(0.4, 0.75), 0.1]), g: -4.0, size: rng.range(0.6, 1.0), twinkle: false },
                 Element::Ice => Spark { x: hx + rng.range(-7.0, 7.0), y: hy + rng.range(-7.0, 5.0), vx: rng.range(-4.0, 4.0), vy: rng.range(2.0, 10.0), life: rng.range(0.8, 1.5), col: Some([0.82, 0.96, 1.0]), g: 4.0, size: rng.range(0.7, 1.2), twinkle: true },
-                Element::Lightning => Spark { x: hx + rng.range(-6.0, 6.0), y: hy + rng.range(-6.0, 6.0), vx: rng.range(-70.0, 70.0), vy: rng.range(-70.0, 70.0), life: rng.range(0.12, 0.3), col: Some([1.0, 0.96, 0.55]), g: 0.0, size: rng.range(0.6, 1.0), twinkle: false },
+                Element::Lightning => Spark { x: hx + rng.range(-6.0, 6.0), y: hy + rng.range(-6.0, 6.0), vx: rng.range(-70.0, 70.0), vy: rng.range(-70.0, 70.0), life: rng.range(0.12, 0.3), col: Some([0.8, 0.55, 1.0]), g: 0.0, size: rng.range(0.6, 1.0), twinkle: false },
                 Element::Matter => Spark { x: hx + rng.range(-8.0, 8.0), y: hy + rng.range(-6.0, 6.0), vx: rng.range(-6.0, 6.0), vy: rng.range(-10.0, 4.0), life: rng.range(1.0, 1.8), col: Some([0.95, 0.75, 0.35]), g: 0.0, size: rng.range(0.7, 1.1), twinkle: false },
                 _ => {
                     // Void: motes appear around the flower and are drawn in toward it.
                     let a = rng.range(0.0, std::f32::consts::TAU);
                     let r = rng.range(14.0, 22.0);
-                    Spark { x: hx + a.cos() * r, y: hy + a.sin() * r, vx: -a.cos() * 26.0, vy: -a.sin() * 26.0, life: 0.55, col: Some([0.75, 0.25, 1.0]), g: 0.0, size: rng.range(0.8, 1.3), twinkle: false }
+                    Spark { x: hx + a.cos() * r, y: hy + a.sin() * r, vx: -a.cos() * 26.0, vy: -a.sin() * 26.0, life: 0.55, col: Some([0.45, 0.35, 0.95]), g: 0.0, size: rng.range(0.8, 1.3), twinkle: false }
                 }
             };
             born.push(sp);
@@ -626,8 +626,8 @@ fn element_colors(el: Element, t: f32, rng: &mut Rng) -> (Rgb, Rgb, Rgb) {
             let center = if rng.chance(0.7) { [1.0, 0.85, 0.25] } else { palette::mix(col, [1.0, 1.0, 1.0], 0.6) };
             (col, center, palette::mix(palette::STEM, [0.55, 0.85, 0.35], rng.f() * 0.7))
         }
-        // Pale yellows and blue-whites, otherwise an ordinary flower.
-        Element::Lightning => (palette::mix([1.0, 0.93, 0.45], [0.8, 0.9, 1.0], t), [1.0, 1.0, 0.92], palette::mix(palette::STEM, [0.45, 0.6, 0.3], rng.f() * 0.5)),
+        // Electro, as in Genshin Impact: electric violet to lilac petals around a white-lilac core.
+        Element::Lightning => (palette::mix([0.6, 0.32, 1.0], [0.8, 0.58, 1.0], t), [0.97, 0.92, 1.0], palette::mix(palette::STEM, [0.4, 0.55, 0.4], rng.f() * 0.5)),
         // Tulips from yellow through orange to red.
         Element::Fire => {
             let (yellow, orange, red) = ([1.0, 0.85, 0.2], [1.0, 0.5, 0.1], [0.86, 0.12, 0.08]);
@@ -636,8 +636,8 @@ fn element_colors(el: Element, t: f32, rng: &mut Rng) -> (Rgb, Rgb, Rgb) {
         }
         Element::Ice => (palette::mix([0.62, 0.88, 1.0], [0.95, 1.0, 1.0], t), [1.0, 1.0, 1.0], palette::mix([0.5, 0.72, 0.85], [0.75, 0.9, 0.95], rng.f())),
         Element::Matter => (palette::mix([0.82, 0.62, 0.24], [0.5, 0.42, 0.34], t), [0.22, 0.18, 0.13], palette::mix([0.35, 0.4, 0.18], [0.5, 0.45, 0.2], rng.f())),
-        // Deep violet petals with a very dark heart.
-        Element::Void => (palette::mix([0.26, 0.1, 0.46], [0.46, 0.2, 0.66], t), [0.05, 0.0, 0.1], palette::mix(palette::STEM, [0.3, 0.45, 0.35], rng.f() * 0.5)),
+        // Dark indigo petals with a very dark heart.
+        Element::Void => (palette::mix([0.1, 0.06, 0.3], [0.22, 0.12, 0.5], t), [0.02, 0.0, 0.06], palette::mix(palette::STEM, [0.3, 0.45, 0.35], rng.f() * 0.5)),
     }
 }
 
@@ -668,6 +668,9 @@ fn new_flower(x: f32, root: f32, rng: &mut Rng, replacing: Option<(u8, f32)>, el
     let (col, center, stem) = element_colors(element, hue, rng);
     if element == Element::Fire {
         kind = 1; // tulips
+    }
+    if element == Element::Lightning {
+        kind = 4; // pointed stars, like Electro crystals
     }
     // Each one is between 60% and 100% of full size.
     let scale = rng.range(0.6, 1.0);
@@ -803,6 +806,10 @@ impl Flower {
             self.element_head(b, hx, hy, s, el, t, glow);
             return;
         }
+        if el == Element::Lightning {
+            // A soft violet glow around the head.
+            b.disc(hx, hy, s * 1.5, [0.7, 0.4, 1.0, 0.13]);
+        }
         match self.kind {
             0 => {
                 for k in 0..self.petals {
@@ -835,6 +842,14 @@ impl Flower {
                     b.tri([hx + l.cos() * s * 0.45, hy + l.sin() * s * 0.45], [hx + r.cos() * s * 0.45, hy + r.sin() * s * 0.45], [hx + a.cos() * s * 1.25, hy + a.sin() * s * 1.25], c);
                 }
                 b.disc(hx, hy, s * 0.38, cc);
+                // Now and then a short, jagged arc of electricity flickers off the head.
+                if el == Element::Lightning && (t * 0.9 + self.phase * 5.0).sin() > 0.985 {
+                    let pts = [[hx, hy - s * 0.6], [hx + s * 0.45, hy - s * 1.2], [hx - s * 0.3, hy - s * 1.8], [hx + s * 0.35, hy - s * 2.5]];
+                    for w in pts.windows(2) {
+                        b.line(w[0], w[1], 1.3, [0.75, 0.5, 1.0, 0.7]);
+                        b.line(w[0], w[1], 0.6, [1.0, 0.97, 1.0, 0.95]);
+                    }
+                }
             }
         }
     }

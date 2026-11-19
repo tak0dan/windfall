@@ -76,10 +76,10 @@ pub fn element_accent(e: crate::config::Element) -> Option<Rgb> {
     let c = |h: u32| [((h >> 16) & 255) as f32 / 255.0, ((h >> 8) & 255) as f32 / 255.0, (h & 255) as f32 / 255.0];
     match e {
         Natural => None,
-        Lightning => Some(c(0xf5e64a)),
+        Lightning => Some(c(0xc08bff)),
         Fire => Some(c(0xff7a2a)),
         Ice => Some(c(0x7fdcff)),
         Matter => Some(c(0xd9a441)),
-        Void => Some(c(0xb45cff)),
+        Void => Some(c(0x6f5de0)),
     }
 }
