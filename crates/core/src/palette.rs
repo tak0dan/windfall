@@ -41,6 +41,42 @@ pub const RAIN: &[Rgb] = &[[0.62, 0.75, 0.92], [0.72, 0.82, 0.95]];
 pub const COMETS: &[Rgb] = &[[0.85, 0.93, 1.0], [0.6, 0.8, 1.0], [1.0, 1.0, 1.0]];
 pub const LIGHTS: &[Rgb] = &[[1.0, 0.84, 0.38], [1.0, 0.72, 0.28], [1.0, 0.92, 0.6], [1.0, 0.78, 0.45]];
 pub const HEARTS: &[Rgb] = &[[1.0, 0.32, 0.5], [1.0, 0.5, 0.68], [0.9, 0.2, 0.4], [1.0, 0.7, 0.8]];
+// Floating lights take the colours of whatever else is on: yellow when they are alone.
+const L_SNOW: &[Rgb] = &[[0.75, 0.9, 1.0], [0.92, 0.97, 1.0], [0.62, 0.82, 1.0]];
+const L_LEAVES: &[Rgb] = &[[1.0, 0.65, 0.25], [0.95, 0.5, 0.2], [1.0, 0.8, 0.4]];
+const L_BLOSSOM: &[Rgb] = &[[1.0, 0.75, 0.85], [1.0, 0.6, 0.75], [1.0, 0.86, 0.92]];
+const L_RAIN: &[Rgb] = &[[0.55, 0.75, 1.0], [0.72, 0.86, 1.0]];
+const L_COMETS: &[Rgb] = &[[0.7, 0.85, 1.0], [0.86, 0.93, 1.0], [1.0, 1.0, 1.0]];
+const L_HEARTS: &[Rgb] = &[[1.0, 0.5, 0.65], [1.0, 0.66, 0.76], [0.95, 0.4, 0.55]];
+const L_NATURAL: &[Rgb] = &[[1.0, 0.9, 0.5], [0.85, 1.0, 0.62], [1.0, 0.8, 0.55]];
+const L_LIGHTNING: &[Rgb] = &[[0.7, 0.45, 1.0], [0.86, 0.66, 1.0]];
+const L_FIRE: &[Rgb] = &[[1.0, 0.55, 0.15], [1.0, 0.76, 0.3]];
+const L_ICE: &[Rgb] = &[[0.7, 0.92, 1.0], [0.9, 1.0, 1.0]];
+const L_MATTER: &[Rgb] = &[[0.92, 0.72, 0.32], [0.8, 0.6, 0.35]];
+const L_VOID: &[Rgb] = &[[0.4, 0.3, 0.9], [0.56, 0.36, 0.95]];
+
+/// The colours of the floating lights while `effect` (and, for flowers, `element`) is on.
+pub fn orb_colors(effect: crate::config::Effect, element: crate::config::Element) -> &'static [Rgb] {
+    use crate::config::{Effect::*, Element};
+    match effect {
+        Lights => LIGHTS,
+        Snow => L_SNOW,
+        Leaves => L_LEAVES,
+        Blossom => L_BLOSSOM,
+        Rain => L_RAIN,
+        Comets => L_COMETS,
+        Hearts => L_HEARTS,
+        Flowers => match element {
+            Element::Natural => L_NATURAL,
+            Element::Lightning => L_LIGHTNING,
+            Element::Fire => L_FIRE,
+            Element::Ice => L_ICE,
+            Element::Matter => L_MATTER,
+            Element::Void => L_VOID,
+        },
+    }
+}
+
 pub const STEM: Rgb = [0.25, 0.62, 0.30];
 
 /// The GUI's look, derived from the running effect.

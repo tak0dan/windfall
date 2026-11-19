@@ -10,6 +10,7 @@ usage: windfallctl <command>
   toggle | on | off     show or hide the effect (remembered between sessions)
   effect <name>         snow | leaves | blossom | rain | flowers | comets | lights | hearts
   element <name>        what the flowers are made of: natural | lightning | fire | ice | matter | void
+  lights [on|off]       floating lights over any effect, in its colours (yellow alone)
   renderer <name>       smooth | pixel
   intensity <0-100>     how much falls or grows
   opacity <10-100>      overall opacity
@@ -66,6 +67,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "quit" => Request::Quit,
         "effect" => set(Patch { effect: Some(args.get(1).and_then(|s| Effect::parse(s)).ok_or("unknown effect")?), ..Default::default() }),
         "element" => set(Patch { element: Some(args.get(1).and_then(|s| Element::parse(s)).ok_or("unknown element")?), ..Default::default() }),
+        "lights" => set(Patch { lights: Some(args.get(1).map(|v| flag(v)).transpose()?.unwrap_or(true)), ..Default::default() }),
         "renderer" => set(Patch { renderer: Some(args.get(1).and_then(|s| Renderer::parse(s)).ok_or("unknown renderer")?), ..Default::default() }),
         "intensity" => set(Patch { intensity: Some(num(args.get(1), 0.0, 100.0)? / 100.0), ..Default::default() }),
         "opacity" => set(Patch { opacity: Some(num(args.get(1), 10.0, 100.0)? / 100.0), ..Default::default() }),
@@ -79,6 +81,7 @@ fn run(args: &[String]) -> Result<(), String> {
                 let (k, v) = kv.split_once('=').ok_or("expected key=value")?;
                 let b = flag(v)?;
                 match k {
+                    "lights" => p.lights = Some(b),
                     "melt" => p.melt = Some(b),
                     "ground" => p.ground = Some(b),
                     "windows" => p.windows = Some(b),

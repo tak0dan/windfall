@@ -72,6 +72,7 @@ struct Ui {
     pixel_levels: gtk::Scale,
     pixel_group: adw::PreferencesGroup,
     melt: adw::SwitchRow,
+    lights: adw::SwitchRow,
     ground: adw::SwitchRow,
     windows: adw::SwitchRow,
     layers: adw::SwitchRow,
@@ -110,6 +111,8 @@ impl Ui {
         self.pixel_levels.set_value(c.pixel_levels as f64);
         self.pixel_group.set_visible(c.renderer == Renderer::Pixel);
         self.melt.set_active(c.melt);
+        self.lights.set_active(c.lights || c.effect == Effect::Lights);
+        self.lights.set_sensitive(c.effect != Effect::Lights);
         self.ground.set_active(c.ground);
         self.windows.set_active(c.windows);
         self.layers.set_active(c.layers);
@@ -238,6 +241,7 @@ fn build(app: &adw::Application) {
 
     let enabled = switch_row("Display", "Show the effect on every monitor; remembered between sessions");
     let melt = switch_row("Melt and wither", "Piles slowly disappear on their own");
+    let lights = switch_row("Floating lights", "Soft glowing circles over any effect, in its colours (yellow on their own)");
     let ground = switch_row("Bottom of the screen", "Collect along the screen's lower edge");
     let windows = switch_row("Windows", "Collect on top of windows");
     let layers = switch_row("Bars and panels", "Waybar, Quickshell and other shell surfaces");
@@ -250,7 +254,7 @@ fn build(app: &adw::Application) {
     let interact = switch_row("React to the cursor", "Push snow aside, brush flowers");
     let over_fs = switch_row("Over fullscreen", "Keep drawing above fullscreen windows");
     let behaviour = adw::PreferencesGroup::new();
-    for r in [&enabled, &melt, &ground, &windows, &layers] {
+    for r in [&enabled, &lights, &melt, &ground, &windows, &layers] {
         behaviour.add(r);
     }
     behaviour.add(&bar_mode);
@@ -284,6 +288,7 @@ fn build(app: &adw::Application) {
         pixel_levels,
         pixel_group,
         melt,
+        lights,
         ground,
         windows,
         layers,
@@ -327,6 +332,7 @@ fn build(app: &adw::Application) {
     }
     toggle!(enabled, enabled);
     toggle!(melt, melt);
+    toggle!(lights, lights);
     toggle!(ground, ground);
     toggle!(windows, windows);
     toggle!(layers, layers);

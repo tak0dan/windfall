@@ -4,7 +4,7 @@ use windfall_core::geom::Rect;
 use windfall_core::sim::*;
 
 fn params(effect: Effect) -> Params {
-    Params { effect, intensity: 1.0, melt: false, interact: true, wind: 0.0, ground: true, windows: true, layers: true, pixel: false, pixel_size: 0.0, glow: [1.0, 0.85, 0.3], element: windfall_core::config::Element::Natural }
+    Params { effect, intensity: 1.0, melt: false, interact: true, wind: 0.0, ground: true, windows: true, layers: true, pixel: false, pixel_size: 0.0, glow: [1.0, 0.85, 0.3], element: windfall_core::config::Element::Natural, lights: false }
 }
 
 fn scene(cursor: Option<[f32; 2]>) -> Scene {
@@ -377,4 +377,29 @@ fn every_element_grows_its_own_flowers_and_things_in_the_air() {
         w.draw(&mut b, &p);
         assert!(b.vertex_count() > 1500, "{el:?} drew too little");
     }
+}
+
+#[test]
+fn floating_lights_overlay_any_effect_in_its_colours_and_are_yellow_alone() {
+    let blueish = |b: &Batch| b.data.chunks(8).filter(|v| v[7] > 0.0 && v[7] < 0.5 && v[6] > v[4] + 0.1).count();
+    let yellowish = |b: &Batch| b.data.chunks(8).filter(|v| v[7] > 0.0 && v[7] < 0.5 && v[4] > v[6] + 0.3 && v[5] > 0.6).count();
+    let run_with = |effect: Effect, lights: bool| {
+        let mut w = World::new(70);
+        w.set_scene(scene(None));
+        let p = Params { lights, ..params(effect) };
+        for _ in 0..(40 * 60) {
+            w.step(1.0 / 60.0, &p);
+        }
+        let mut b = Batch::default();
+        w.draw(&mut b, &p);
+        b
+    };
+    let snow_off = run_with(Effect::Snow, false);
+    let snow_on = run_with(Effect::Snow, true);
+    assert!(snow_on.vertex_count() > snow_off.vertex_count() + 60, "no lights over the snow");
+    assert!(blueish(&snow_on) > blueish(&snow_off), "lights over snow should be icy");
+    let alone = run_with(Effect::Lights, false);
+    assert!(yellowish(&alone) > 20, "lights on their own are yellow");
+    let leaves = run_with(Effect::Leaves, true);
+    assert!(yellowish(&leaves) > 20, "lights over leaves should be amber");
 }

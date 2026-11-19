@@ -61,6 +61,8 @@ pub struct Params {
     pub glow: Rgb,
     /// What the flowers are made of.
     pub element: crate::config::Element,
+    /// Floating lights over the effect, in its colours.
+    pub lights: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -123,6 +125,7 @@ pub struct World {
     rng: Rng,
     time: f32,
     spawn_acc: f32,
+    orb_acc: f32,
     scene: Scene,
     last_cursor: Option<[f32; 2]>,
     cursor_speed: f32,
@@ -144,6 +147,7 @@ impl World {
             rng: Rng::new(seed),
             time: 0.0,
             spawn_acc: 0.0,
+            orb_acc: 0.0,
             scene: Scene::default(),
             last_cursor: None,
             cursor_speed: 0.0,
@@ -401,7 +405,27 @@ impl World {
         self.last_cursor = self.scene.cursor;
     }
 
+    /// Soft circles of light, alone (yellow) or over any effect (in its colours).
+    fn spawn_orbs(&mut self, dt: f32, p: &Params) {
+        if !(p.lights || p.effect == Effect::Lights) {
+            return;
+        }
+        let (w, h) = (self.scene.w, self.scene.h);
+        self.orb_acc += 2.0 * (0.5 + 0.5 * p.intensity) * (w / 1920.0).max(0.3) * dt;
+        let colors = palette::orb_colors(p.effect, p.element).len();
+        while self.orb_acc >= 1.0 {
+            self.orb_acc -= 1.0;
+            if self.parts.iter().filter(|q| q.kind == Kind::Orb).count() >= 40 {
+                break;
+            }
+            let life = self.rng.range(9.0, 18.0);
+            let col = self.rng.below(colors) as u8;
+            self.parts.push(P { kind: Kind::Orb, x: self.rng.range(-60.0, w), y: self.rng.range(h * 0.05, h + 40.0), vx: self.rng.range(6.0, 22.0), vy: -self.rng.range(6.0, 24.0), size: self.rng.range(14.0, 64.0), phase: self.rng.f() * 6.28, spin: 0.0, col, heavy: false, life, mass: life });
+        }
+    }
+
     fn spawn(&mut self, dt: f32, p: &Params) {
+        self.spawn_orbs(dt, p);
         let per_sec = match p.effect {
             Effect::Snow => 70.0,
             Effect::Leaves => 9.0,
@@ -409,7 +433,7 @@ impl World {
             Effect::Rain => 420.0,
             Effect::Flowers => 0.0,
             Effect::Comets => 1.6,
-            Effect::Lights => 2.0,
+            Effect::Lights => 0.0, // the lights have their own spawner below
             Effect::Hearts => 9.0,
         } * p.intensity
             * (self.scene.w / 1920.0).max(if p.effect == Effect::Comets { 0.9 } else { 0.3 })
@@ -672,9 +696,10 @@ impl World {
 
     pub fn draw(&self, b: &mut Batch, p: &Params) {
         let colors = flake_colors(p.effect);
-        // Warm lights glow behind everything else.
+        // Floating lights glow behind everything else.
+        let orbs = palette::orb_colors(p.effect, p.element);
         for q in self.parts.iter().filter(|q| q.kind == Kind::Orb) {
-            let c = colors[(q.col as usize) % colors.len()];
+            let c = orbs[(q.col as usize) % orbs.len()];
             let age = q.mass - q.life;
             let fade = (age / 2.5).min(q.life / 2.5).clamp(0.0, 1.0);
             let pulse = 0.86 + 0.14 * (self.time * 0.9 + q.phase).sin();

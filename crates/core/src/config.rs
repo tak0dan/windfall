@@ -178,6 +178,8 @@ pub struct Config {
     pub layers: bool,
     /// Which part of a bar collects things.
     pub bar_mode: BarMode,
+    /// Soft floating lights over any effect, in that effect's colours (yellow on their own).
+    pub lights: bool,
     /// Keep drawing above fullscreen windows.
     pub over_fullscreen: bool,
     /// React to the cursor.
@@ -204,6 +206,7 @@ impl Default for Config {
             windows: true,
             layers: true,
             bar_mode: BarMode::Visible,
+            lights: false,
             over_fullscreen: false,
             interact: true,
             wind: 0.0,
@@ -288,6 +291,7 @@ pub struct Patch {
     pub windows: Option<bool>,
     pub layers: Option<bool>,
     pub bar_mode: Option<BarMode>,
+    pub lights: Option<bool>,
     pub over_fullscreen: Option<bool>,
     pub interact: Option<bool>,
     pub wind: Option<f32>,
@@ -301,7 +305,7 @@ impl Config {
         macro_rules! set {
             ($($f:ident),*) => { $( if let Some(v) = p.$f { self.$f = v; } )* };
         }
-        set!(enabled, effect, element, renderer, intensity, opacity, pixel_size, pixel_levels, melt, ground, windows, layers, bar_mode, over_fullscreen, interact, wind);
+        set!(enabled, effect, element, renderer, intensity, opacity, pixel_size, pixel_levels, melt, ground, windows, layers, bar_mode, lights, over_fullscreen, interact, wind);
         self.clamp();
         if let Some(g) = &p.glow_color {
             if crate::palette::parse_hex(g).is_some() {

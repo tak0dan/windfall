@@ -83,6 +83,7 @@ impl ksni::Tray for Tray {
                 options: Renderer::ALL.iter().map(|r| RadioItem { label: r.title().into(), ..Default::default() }).collect(),
             }
             .into(),
+            CheckmarkItem { label: "Floating lights".into(), checked: c.lights, activate: Box::new(|t: &mut Tray| { let on = !t.config.lights; let _ = t.tx.send(Msg::Patch(Patch { lights: Some(on), ..Default::default() })); }), ..Default::default() }.into(),
             SubMenu { label: "Intensity".into(), submenu: vec![level("Light", 0.2), level("Steady", 0.5), level("Heavy", 0.85)], ..Default::default() }.into(),
             MenuItem::Separator,
             StandardItem { label: "Clear".into(), activate: Box::new(|t: &mut Tray| { let _ = t.tx.send(Msg::Clear); }), ..Default::default() }.into(),

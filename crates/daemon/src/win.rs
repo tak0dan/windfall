@@ -396,6 +396,7 @@ fn params(c: &Config) -> Params {
         pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
         glow: windfall_core::config::glow_for(c),
         element: c.element,
+        lights: c.lights,
     }
 }
 
@@ -727,6 +728,7 @@ unsafe fn tray_menu(hwnd: HWND) {
     }
     AppendMenuW(menu, MF_POPUP, intensity as usize, wide("Intensity").as_ptr());
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
+    add(menu, 53, "Floating lights", c.lights);
     add(menu, 50, "Clear", false);
     add(menu, 52, "Start with Windows", autostart_on());
     add(menu, 99, "Quit", false);
@@ -754,6 +756,10 @@ unsafe fn tray_menu(hwnd: HWND) {
             30..=31 => apply(app, &Patch { renderer: Some(Renderer::ALL[cmd - 30]), ..Default::default() }),
             40..=42 => apply(app, &Patch { intensity: Some([0.2, 0.5, 0.85][cmd - 40]), ..Default::default() }),
             50 => app.overlays.iter_mut().for_each(|o| o.world.clear()),
+            53 => {
+                let on = !app.config.lights;
+                apply(app, &Patch { lights: Some(on), ..Default::default() });
+            }
             51 => open_controller(),
             52 => set_autostart(!autostart_on()),
             99 => app.quit = true,

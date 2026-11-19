@@ -66,6 +66,19 @@ the grass further, rooted on the curve itself.
 | ![Shooting stars](docs/screens/comets.jpg) **Shooting stars** burst into blue sparks on whatever they hit | ![Warm lights](docs/screens/lights.jpg) **Warm lights**: slow, glowing, anime-style circles of light |
 | ![Falling hearts](docs/screens/hearts.jpg) **Falling hearts** pop into pink sparks | |
 
+### Floating lights: a toggle for every effect
+
+*Warm lights* is also a **switch** that works on top of any effect (**Floating lights** in the controller and the
+tray, or `windfallctl lights on|off`). On their own the circles are warm yellow; over another effect they **take its
+colours**: icy blue-white over snow, amber over leaves, pink over blossom and hearts, blue over rain and comets, and
+over the flowers the colour of their element (golden for natural ones, violet for lightning, orange for fire, and so
+on). Change the effect and the lights change colour with it.
+
+| | |
+|---|---|
+| ![Lights over snow](docs/screens/lights-snow.jpg) **Snow**: icy | ![Lights over blossom](docs/screens/lights-blossom.jpg) **Blossom**: pink |
+| ![Lights over hearts](docs/screens/lights-hearts.jpg) **Hearts**: rose | ![Lights alone](docs/screens/lights-alone.jpg) **Alone**: warm yellow |
+
 ## Flower elements
 
 The flowers can be made of something other than nature (`windfallctl element <name>`). Each has its own flowers,
@@ -104,7 +117,7 @@ pixel size (1–10) and the number of colours are adjustable, and **the controll
 
 A tray icon (a little drawing of the current effect) sits in your bar's tray. **Left-click** opens the controller,
 **middle-click** shows/hides the effect, **right-click** has the menu: Display, effect, flower element, renderer,
-intensity, Clear, Quit.
+intensity, Floating lights, Clear, Quit.
 
 The controller has a live preview, every setting, and **takes its colours from the running effect**: icy blue for
 snow, amber for leaves, rose for hearts, and so on. In pixel-art mode the controller itself turns pixel-art.
@@ -170,6 +183,7 @@ windfallctl status                    # what is running
 windfallctl on | off | toggle         # show / hide (remembered between sessions)
 windfallctl effect flowers            # snow leaves blossom rain flowers comets lights hearts
 windfallctl element fire              # natural lightning fire ice matter void
+windfallctl lights on                 # floating lights over any effect, in its colours (off to stop)
 windfallctl renderer pixel            # smooth | pixel
 windfallctl intensity 70              # 0-100
 windfallctl pixel-size 2              # 1-10

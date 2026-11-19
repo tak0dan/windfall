@@ -104,6 +104,7 @@ impl App {
             pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
             glow: windfall_core::config::glow_for(c),
             element: c.element,
+            lights: c.lights,
         }
     }
 
