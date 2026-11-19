@@ -86,7 +86,8 @@ fn params(c: &Config) -> Params {
         layers: true,
         pixel: c.renderer == Renderer::Pixel,
         pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
-        glow: windfall_core::palette::parse_hex(&c.glow_color).unwrap_or([1.0, 0.85, 0.3]),
+        glow: windfall_core::config::glow_for(c),
+        element: c.element,
     }
 }
 
@@ -216,3 +217,22 @@ fn paint_batch(cr: &Context, data: &[f32]) {
 
 #[allow(dead_code)]
 fn _unused(_: Effect) {}
+
+/// Renders the preview offscreen after `secs` of simulated time and saves it as a PNG (used for screenshots
+/// and checks; needs no display).
+pub fn render_png(config: &Config, secs: f32, w: i32, h: i32, path: &str) -> Result<(), String> {
+    let mut st = State { config: config.clone(), world: World::new(7), batch: Batch::default(), cursor: None, last: None, size: (w as f32, h as f32) };
+    let p = params(&st.config);
+    let dt = if config.renderer == Renderer::Pixel { 1.0 / 30.0 } else { 1.0 / 60.0 };
+    st.world.set_scene(scene(w as f32, h as f32, None));
+    for _ in 0..(secs / dt) as usize {
+        st.world.step(dt, &p);
+    }
+    let surface = ImageSurface::create(Format::ARgb32, w, h).map_err(|e| e.to_string())?;
+    {
+        let cr = Context::new(&surface).map_err(|e| e.to_string())?;
+        draw(&mut st, &cr, w as f32, h as f32);
+    }
+    let mut f = std::fs::File::create(path).map_err(|e| e.to_string())?;
+    surface.write_to_png(&mut f).map_err(|e| e.to_string())
+}

@@ -4,7 +4,7 @@ mod theme;
 use adw::prelude::*;
 use gtk::glib;
 use libadwaita as adw;
-use windfall_core::config::{BarMode, Config, Effect, Patch, Renderer};
+use windfall_core::config::{BarMode, Config, Effect, Element, Patch, Renderer};
 use windfall_core::ipc::{self, Request, Response};
 use std::cell::{Cell, RefCell};
 use std::io::{BufRead, BufReader};
@@ -14,6 +14,24 @@ use std::sync::mpsc;
 const APP_ID: &str = "io.github.tak0dan.Windfall";
 
 fn main() -> glib::ExitCode {
+    // `windfall-gui --render <out.png> <effect> [element] [smooth|pixel] [seconds]`: a picture of the preview.
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--render") {
+        let mut c = Config::default();
+        c.effect = args.get(3).and_then(|s| Effect::parse(s)).unwrap_or(Effect::Snow);
+        c.element = args.get(4).and_then(|s| Element::parse(s)).unwrap_or(Element::Natural);
+        c.renderer = args.get(5).and_then(|s| Renderer::parse(s)).unwrap_or(Renderer::Smooth);
+        c.intensity = 0.8;
+        let secs = args.get(6).and_then(|s| s.parse().ok()).unwrap_or(25.0);
+        let out = args.get(2).cloned().unwrap_or_else(|| "preview.png".into());
+        return match preview::render_png(&c, secs, 640, 260, &out) {
+            Ok(()) => glib::ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("windfall-gui: {e}");
+                glib::ExitCode::FAILURE
+            }
+        };
+    }
     let app = adw::Application::builder().application_id(APP_ID).build();
     app.connect_activate(build);
     app.run()
@@ -55,6 +73,7 @@ struct Ui {
     layers: adw::SwitchRow,
     bar_mode: adw::ComboRow,
     glow_row: adw::ActionRow,
+    element_row: adw::ComboRow,
     glow_button: gtk::ColorDialogButton,
     interact: adw::SwitchRow,
     over_fs: adw::SwitchRow,
@@ -93,14 +112,16 @@ impl Ui {
         self.bar_mode.set_selected(BarMode::ALL.iter().position(|m| *m == c.bar_mode).unwrap_or(0) as u32);
         self.bar_mode.set_sensitive(c.layers);
         self.glow_row.set_visible(c.effect == Effect::Flowers);
+        self.element_row.set_visible(c.effect == Effect::Flowers);
+        self.element_row.set_selected(Element::ALL.iter().position(|e| *e == c.element).unwrap_or(0) as u32);
         if let Some(rgb) = windfall_core::palette::parse_hex(&c.glow_color) {
             self.glow_button.set_rgba(&gtk::gdk::RGBA::new(rgb[0], rgb[1], rgb[2], 1.0));
         }
         self.interact.set_active(c.interact);
         self.over_fs.set_active(c.over_fullscreen);
         self.preview.set_config(c);
-        if old.effect != c.effect || old.renderer != c.renderer || self.provider.to_str().is_empty() {
-            self.provider.load_from_string(&theme::css(c.effect, c.renderer));
+        if old.effect != c.effect || old.renderer != c.renderer || old.element != c.element || self.provider.to_str().is_empty() {
+            self.provider.load_from_string(&theme::css(c.effect, c.renderer, c.element));
         }
         self.updating.set(false);
     }
@@ -172,9 +193,24 @@ fn build(app: &adw::Application) {
         }
         (row, buttons)
     };
-    let (effect_row, ebuttons) = picker(Effect::ALL.iter().enumerate().map(|(i, e)| (e.title().replace("Autumn ", "").replace("Cherry ", ""), i)).collect());
+    // Eight effects in two rows, all in one radio group.
+    let short = |e: &Effect| match e {
+        Effect::Leaves => "Leaves",
+        Effect::Blossom => "Blossom",
+        Effect::Comets => "Comets",
+        Effect::Lights => "Lights",
+        Effect::Hearts => "Hearts",
+        other => other.title(),
+    };
+    let (effect_row_a, mut ebuttons) = picker(Effect::ALL[..4].iter().enumerate().map(|(i, e)| (short(e).to_string(), i)).collect());
+    let (effect_row_b, ebuttons_b) = picker(Effect::ALL[4..].iter().enumerate().map(|(i, e)| (short(e).to_string(), i)).collect());
+    for b in &ebuttons_b {
+        b.set_group(Some(&ebuttons[0]));
+    }
+    ebuttons.extend(ebuttons_b);
     let (renderer_row, rbuttons) = picker(Renderer::ALL.iter().enumerate().map(|(i, r)| (r.title().to_string(), i)).collect());
-    page.append(&effect_row);
+    page.append(&effect_row_a);
+    page.append(&effect_row_b);
     page.append(&renderer_row);
 
     let intensity = slider(0.0, 100.0, 1.0);
@@ -186,6 +222,9 @@ fn build(app: &adw::Application) {
     main_group.add(&scale_row("Intensity", &intensity));
     main_group.add(&scale_row("Opacity", &opacity));
     main_group.add(&scale_row("Wind", &wind));
+    let element_row = adw::ComboRow::builder().title("Flower element").subtitle("What the flowers are made of").build();
+    element_row.set_model(Some(&gtk::StringList::new(&Element::ALL.map(|e| e.title()))));
+    main_group.add(&element_row);
     page.append(&main_group);
 
     let pixel_group = adw::PreferencesGroup::builder().title("Pixel art").build();
@@ -193,7 +232,7 @@ fn build(app: &adw::Application) {
     pixel_group.add(&scale_row("Colours", &pixel_levels));
     page.append(&pixel_group);
 
-    let enabled = switch_row("Enabled", "Draw the effect on every monitor");
+    let enabled = switch_row("Display", "Show the effect on every monitor; remembered between sessions");
     let melt = switch_row("Melt and wither", "Piles slowly disappear on their own");
     let ground = switch_row("Bottom of the screen", "Collect along the screen's lower edge");
     let windows = switch_row("Windows", "Collect on top of windows");
@@ -246,6 +285,7 @@ fn build(app: &adw::Application) {
         layers,
         bar_mode,
         glow_row,
+        element_row,
         glow_button,
         interact,
         over_fs,
@@ -287,6 +327,14 @@ fn build(app: &adw::Application) {
     toggle!(windows, windows);
     toggle!(layers, layers);
     toggle!(interact, interact);
+    {
+        let ui2 = ui.clone();
+        ui.element_row.connect_selected_notify(move |r| {
+            if let Some(e) = Element::ALL.get(r.selected() as usize) {
+                ui2.patch(Patch { element: Some(*e), ..Default::default() })
+            }
+        });
+    }
     {
         let ui2 = ui.clone();
         ui.glow_button.connect_rgba_notify(move |b| {

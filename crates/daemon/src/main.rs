@@ -107,7 +107,8 @@ impl App {
             layers: c.layers,
             pixel: c.renderer == Renderer::Pixel,
             pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
-            glow: windfall_core::palette::parse_hex(&c.glow_color).unwrap_or([1.0, 0.85, 0.3]),
+            glow: windfall_core::config::glow_for(c),
+            element: c.element,
         }
     }
 
@@ -638,6 +639,7 @@ fn main() {
     for i in 0..app.mons.len() {
         app.destroy_overlay(i);
     }
+    let _ = app.config.save();
     let _ = app.conn.flush();
     let _ = std::fs::remove_file(windfall_core::ipc::socket_path());
 }

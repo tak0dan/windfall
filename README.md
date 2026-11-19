@@ -8,6 +8,12 @@ app Snowhush (no code from it is used).
 * **Effects** – snow, leaves, blossom and rain fall and pile up on window tops, bars and the screen's edge.
   Flowers instead grow in a thick lawn of tiny blooms along the same edges; they sway when the cursor
   brushes them and stretch up while it stays, then settle back.
+* **Flower elements** – the flowers can be made of *lightning*, *fire*, *ice*, *matter* or *void*, each with its own
+  shapes, grass, glow and things drifting off it (`windfallctl element fire`).
+* **Particle modes** – *shooting stars* that burst into blue sparks on whatever they hit, slow *warm lights*
+  (anime-style bokeh circles) and *falling hearts* that pop into pink sparks.
+* **Display switch** – show/hide everything from the tray, the controller or `windfallctl on|off`; the choice is
+  remembered between sessions. The package starts Windfall with your Hyprland session.
 * **Two renderers** – *smooth* (soft, anti-aliased) and *pixel art* (coarse grid, limited palette, hard edges;
   pixel size and colour count are adjustable). The controller restyles itself to match.
 * **Tray icon** (StatusNotifier) – left click opens the controller, middle click toggles, right click has the menu.
@@ -18,6 +24,12 @@ app Snowhush (no code from it is used).
 * **Hyprland** – window geometry, workspaces, fullscreen, rounded corners and borders come from Hyprland's IPC.
   Snow on a window waits while its workspace is off screen, slides off gradually when the window is moved, and
   drops when it closes. Clicks pass straight through the overlay. Fractional scaling is supported.
+
+| | | |
+|---|---|---|
+| ![snow](docs/snow.png) | ![flowers](docs/flowers.png) | ![pixel blossom](docs/blossom-pixel.png) |
+| ![fire flowers](docs/flowers-fire.png) | ![ice flowers](docs/flowers-ice.png) | ![void flowers](docs/flowers-void.png) |
+| ![hearts](docs/hearts.png) | ![lights](docs/lights.png) | ![comets](docs/comets.png) |
 
 ## Install
 

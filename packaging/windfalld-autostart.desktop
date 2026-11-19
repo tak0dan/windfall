@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Windfall
+Comment=Weather overlay for Hyprland
+Exec=windfalld
+Icon=windfall
+OnlyShowIn=Hyprland;
+X-systemd-skip=true
+NoDisplay=true

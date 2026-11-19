@@ -1,6 +1,6 @@
 # Builds the working tree this file sits in:   cd packaging && makepkg -si
 pkgname=windfall
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Snow, leaves, blossom, rain and flowers on your Hyprland desktop, with a tray icon and a GTK4 controller"
 arch=('x86_64' 'aarch64')
@@ -11,6 +11,7 @@ makedepends=('cargo')
 optdepends=('ttf-jetbrains-mono: pixel-theme font fallback'
             'ttf-press-start-2p: authentic pixel font for the controller in pixel mode')
 options=('!lto' '!debug')
+install=windfall.install
 
 prepare() {
   cd "$startdir/.."
@@ -37,5 +38,6 @@ package() {
   install -Dm644 packaging/windfall-controller.desktop "$pkgdir/usr/share/applications/io.github.tak0dan.Windfall.desktop"
   install -Dm644 packaging/windfall.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/windfall.svg"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 packaging/windfalld-autostart.desktop "$pkgdir/etc/xdg/autostart/windfalld.desktop"
   install -Dm644 packaging/windfalld.service "$pkgdir/usr/lib/systemd/user/windfalld.service"
 }

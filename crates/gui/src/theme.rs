@@ -1,11 +1,17 @@
 //! The controller's look follows what is falling: each effect has its own palette, and the pixel renderer
 //! turns the whole window pixel-art (square corners, hard borders and shadows, a blocky font).
 
-use windfall_core::config::{Effect, Renderer};
+use windfall_core::config::{Effect, Element, Renderer};
 use windfall_core::palette::{hex, mix, theme};
 
-pub fn css(effect: Effect, renderer: Renderer) -> String {
-    let t = theme(effect);
+pub fn css(effect: Effect, renderer: Renderer, element: Element) -> String {
+    let mut t = theme(effect);
+    // Flowers made of an element tint the controller with it.
+    if effect == Effect::Flowers {
+        if let Some(a) = windfall_core::palette::element_accent(element) {
+            t.accent = a;
+        }
+    }
     let pixel = renderer == Renderer::Pixel;
     let hov = hex(mix(t.surface, t.accent, 0.18));
     let mut s = format!(

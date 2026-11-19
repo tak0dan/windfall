@@ -12,6 +12,7 @@
 //! 100%, rooted on the curve itself.
 
 use super::{Surf, SurfKind};
+use crate::config::Element;
 use crate::draw::Batch;
 use crate::palette::{self, Rgb};
 use crate::rng::Rng;
@@ -71,6 +72,11 @@ struct Spark {
     vx: f32,
     vy: f32,
     life: f32,
+    /// Its own colour, or the glow colour when none.
+    col: Option<Rgb>,
+    g: f32,
+    size: f32,
+    twinkle: bool,
 }
 
 /// One stretch of ground: a window's top edge, or one painted part of a bar.
@@ -135,14 +141,15 @@ pub struct Bed {
     intensity: f32,
     f_wave: Option<f32>,
     g_wave: Option<f32>,
+    element: Element,
 }
 
 impl Bed {
-    pub fn new(s: &Surf, rng: &mut Rng) -> Bed {
-        Bed::empty(s.kind, vec![Span::of(s)], rng)
+    pub fn new(s: &Surf, element: Element, rng: &mut Rng) -> Bed {
+        Bed::empty(s.kind, vec![Span::of(s)], element, rng)
     }
 
-    fn empty(kind: SurfKind, spans: Vec<Span>, rng: &mut Rng) -> Bed {
+    fn empty(kind: SurfKind, spans: Vec<Span>, element: Element, rng: &mut Rng) -> Bed {
         let edge = spans.iter().map(|s| s.left).fold(f32::MAX, f32::min);
         let mut b = Bed {
             kind,
@@ -160,6 +167,7 @@ impl Bed {
             intensity: 0.5,
             f_wave: None,
             g_wave: None,
+            element,
         };
         b.fill_grass(rng);
         b
@@ -262,7 +270,7 @@ impl Bed {
         let have = self.flowers.iter().filter(|f| !f.lost).count();
         for _ in have..cap {
             let Some((x, root)) = self.pick_spot(rng) else { return };
-            let mut f = new_flower(x, root, rng, None);
+            let mut f = new_flower(x, root, rng, None, self.element);
             f.h = f.hmax;
             self.flowers.push(f);
         }
@@ -366,8 +374,9 @@ impl Bed {
     }
 
     /// Advances the lawn. Returns the heads of flowers that just puffed away.
-    pub fn step(&mut self, dt: f32, intensity: f32, cursor: Option<[f32; 2]>, rng: &mut Rng, hidden_at: &dyn Fn(f32) -> bool) -> Vec<[f32; 2]> {
+    pub fn step(&mut self, dt: f32, intensity: f32, element: Element, cursor: Option<[f32; 2]>, rng: &mut Rng, hidden_at: &dyn Fn(f32) -> bool) -> Vec<[f32; 2]> {
         self.age += dt;
+        self.element = element;
         self.cursor = cursor;
         self.intensity = intensity;
         let mut puffs = Vec::new();
@@ -446,7 +455,7 @@ impl Bed {
                 self.spawn_acc -= 1.0;
                 if self.flowers.iter().filter(|f| !f.lost).count() < cap {
                     if let Some((x, root)) = self.pick_spot(rng) {
-                        self.flowers.push(new_flower(x, root, rng, None));
+                        self.flowers.push(new_flower(x, root, rng, None, self.element));
                     }
                 }
             }
@@ -493,15 +502,54 @@ impl Bed {
         if !self.orphan {
             self.bursts(dt, rng);
         }
+        if !self.orphan {
+            self.emit(dt, rng);
+        }
         for sp in &mut self.sparks {
             sp.life -= dt;
-            sp.vy += 70.0 * dt;
+            sp.vy += sp.g * dt;
             sp.vx *= 1.0 - 2.0 * dt;
             sp.x += sp.vx * dt;
             sp.y += sp.vy * dt;
         }
         self.sparks.retain(|sp| sp.life > 0.0);
         puffs
+    }
+
+    /// What the element's flowers give off: embers, frost glitter, little sparks, dust, dark motes.
+    fn emit(&mut self, dt: f32, rng: &mut Rng) {
+        let rate = match self.element {
+            Element::Natural => return,
+            Element::Fire => 0.5,
+            Element::Ice => 0.3,
+            Element::Lightning => 0.3,
+            Element::Matter => 0.22,
+            Element::Void => 0.4,
+        };
+        if self.sparks.len() > 500 {
+            return;
+        }
+        let mut born = Vec::new();
+        for f in &self.flowers {
+            if f.hidden || f.lost || f.h < f.hmax * 0.6 || rng.f() >= rate * dt {
+                continue;
+            }
+            let (hx, hy) = (f.x + f.bend, f.root - f.h - f.boost);
+            let sp = match self.element {
+                Element::Fire => Spark { x: hx + rng.range(-3.0, 3.0), y: hy - 2.0, vx: rng.range(-8.0, 8.0), vy: -rng.range(25.0, 60.0), life: rng.range(0.5, 1.0), col: Some([1.0, rng.range(0.4, 0.75), 0.1]), g: -4.0, size: rng.range(0.8, 1.4), twinkle: false },
+                Element::Ice => Spark { x: hx + rng.range(-7.0, 7.0), y: hy + rng.range(-7.0, 5.0), vx: rng.range(-4.0, 4.0), vy: rng.range(2.0, 10.0), life: rng.range(0.8, 1.5), col: Some([0.82, 0.96, 1.0]), g: 4.0, size: rng.range(0.7, 1.2), twinkle: true },
+                Element::Lightning => Spark { x: hx + rng.range(-6.0, 6.0), y: hy + rng.range(-6.0, 6.0), vx: rng.range(-70.0, 70.0), vy: rng.range(-70.0, 70.0), life: rng.range(0.12, 0.3), col: Some([1.0, 0.96, 0.55]), g: 0.0, size: rng.range(0.6, 1.0), twinkle: false },
+                Element::Matter => Spark { x: hx + rng.range(-8.0, 8.0), y: hy + rng.range(-6.0, 6.0), vx: rng.range(-6.0, 6.0), vy: rng.range(-10.0, 4.0), life: rng.range(1.0, 1.8), col: Some([0.95, 0.75, 0.35]), g: 0.0, size: rng.range(0.7, 1.1), twinkle: false },
+                _ => {
+                    // Void: motes appear around the flower and are drawn in toward it.
+                    let a = rng.range(0.0, std::f32::consts::TAU);
+                    let r = rng.range(14.0, 22.0);
+                    Spark { x: hx + a.cos() * r, y: hy + a.sin() * r, vx: -a.cos() * 26.0, vy: -a.sin() * 26.0, life: 0.55, col: Some([0.75, 0.25, 1.0]), g: 0.0, size: rng.range(0.8, 1.3), twinkle: false }
+                }
+            };
+            born.push(sp);
+        }
+        self.sparks.extend(born);
     }
 
     /// Once in a while a grown flower gives way: a tiny burst of sparks, then a different one starts growing.
@@ -524,11 +572,11 @@ impl Bed {
         for _ in 0..rng.below(5) + 9 {
             let a = rng.range(0.0, std::f32::consts::TAU);
             let v = rng.range(14.0, 52.0);
-            self.sparks.push(Spark { x, y, vx: a.cos() * v, vy: a.sin() * v - 20.0, life: rng.range(0.45, 0.9) });
+            self.sparks.push(Spark { x, y, vx: a.cos() * v, vy: a.sin() * v - 20.0, life: rng.range(0.45, 0.9), col: None, g: 70.0, size: 0.9, twinkle: false });
         }
         let old = (f.kind, f.hue);
         let (at, root) = (f.x, f.root);
-        self.flowers[i] = new_flower(at, root, rng, Some(old));
+        self.flowers[i] = new_flower(at, root, rng, Some(old), self.element);
     }
 
     pub fn draw(&self, b: &mut Batch, pixel_size: f32, glow: Rgb) {
@@ -543,18 +591,23 @@ impl Bed {
                 let h = g.h * (0.25 + 0.75 * grow);
                 let w = if px { pixel_size.max(g.width) } else { g.width };
                 let shade = if layer == 0 { 0.62 } else { 1.0 };
-                let col = palette::mix([0.12, 0.42, 0.16], [0.40, 0.76, 0.26], g.tint);
+                let (g0, g1) = grass_colors(self.element);
+                let col = palette::mix(g0, g1, g.tint);
                 b.tri([g.x - w * 0.5, g.root + 1.0], [g.x + w * 0.5, g.root + 1.0], [g.x + g.lean + sway, g.root - h], [col[0] * shade, col[1] * shade, col[2] * shade, 1.0]);
             }
         }
         for f in &self.flowers {
             if !f.hidden {
-                f.draw(b, f.root, pixel_size, glow);
+                f.draw(b, f.root, pixel_size, glow, self.element, self.age);
             }
         }
         for sp in &self.sparks {
-            let a = (sp.life * 2.5).clamp(0.0, 1.0);
-            b.disc(sp.x, sp.y, if px { pixel_size * 0.6 } else { 0.9 }, [glow[0], glow[1], glow[2], a]);
+            let mut a = (sp.life * 2.5).clamp(0.0, 1.0);
+            if sp.twinkle {
+                a *= 0.6 + 0.4 * (sp.life * 30.0).sin();
+            }
+            let c = sp.col.unwrap_or(glow);
+            b.disc(sp.x, sp.y, if px { pixel_size * 0.6 } else { sp.size }, [c[0], c[1], c[2], a]);
         }
     }
 }
@@ -564,8 +617,37 @@ fn hue_distance(a: f32, b: f32) -> f32 {
     d.min(1.0 - d)
 }
 
+/// Colours of a flower of the given element, the hue `t` (0..1) choosing among its shades:
+/// (petals, middle, stem).
+fn element_colors(el: Element, t: f32, rng: &mut Rng) -> (Rgb, Rgb, Rgb) {
+    match el {
+        Element::Natural => {
+            let col = palette::hsv(t, rng.range(0.45, 0.95), rng.range(0.9, 1.0));
+            let center = if rng.chance(0.7) { [1.0, 0.85, 0.25] } else { palette::mix(col, [1.0, 1.0, 1.0], 0.6) };
+            (col, center, palette::mix(palette::STEM, [0.55, 0.85, 0.35], rng.f() * 0.7))
+        }
+        Element::Lightning => (palette::mix([1.0, 0.95, 0.35], [0.65, 0.82, 1.0], t), [1.0, 1.0, 1.0], palette::mix([0.2, 0.42, 0.4], [0.5, 0.6, 0.2], rng.f())),
+        Element::Fire => (palette::hsv(t * 0.12, 0.95, 1.0), [1.0, 0.92, 0.45], palette::mix([0.2, 0.1, 0.07], [0.45, 0.18, 0.06], rng.f())),
+        Element::Ice => (palette::mix([0.62, 0.88, 1.0], [0.95, 1.0, 1.0], t), [1.0, 1.0, 1.0], palette::mix([0.5, 0.72, 0.85], [0.75, 0.9, 0.95], rng.f())),
+        Element::Matter => (palette::mix([0.82, 0.62, 0.24], [0.5, 0.42, 0.34], t), [0.22, 0.18, 0.13], palette::mix([0.35, 0.4, 0.18], [0.5, 0.45, 0.2], rng.f())),
+        Element::Void => (palette::mix([0.2, 0.05, 0.36], [0.5, 0.12, 0.65], t), [0.02, 0.0, 0.05], palette::mix([0.1, 0.04, 0.18], [0.22, 0.08, 0.34], rng.f())),
+    }
+}
+
+/// The two ends of the grass's colour range for an element.
+fn grass_colors(el: Element) -> (Rgb, Rgb) {
+    match el {
+        Element::Natural => ([0.12, 0.42, 0.16], [0.40, 0.76, 0.26]),
+        Element::Lightning => ([0.08, 0.3, 0.25], [0.72, 0.86, 0.22]),
+        Element::Fire => ([0.14, 0.08, 0.06], [0.62, 0.24, 0.05]),
+        Element::Ice => ([0.45, 0.66, 0.8], [0.82, 0.95, 1.0]),
+        Element::Matter => ([0.25, 0.25, 0.12], [0.56, 0.5, 0.2]),
+        Element::Void => ([0.07, 0.03, 0.14], [0.3, 0.1, 0.45]),
+    }
+}
+
 /// `replacing`: the kind and hue of the flower that just burst, which the new one must differ from.
-fn new_flower(x: f32, root: f32, rng: &mut Rng, replacing: Option<(u8, f32)>) -> Flower {
+fn new_flower(x: f32, root: f32, rng: &mut Rng, replacing: Option<(u8, f32)>, element: Element) -> Flower {
     let mut hue = rng.f();
     let mut kind = rng.below(5) as u8;
     if let Some((k, h)) = replacing {
@@ -576,7 +658,7 @@ fn new_flower(x: f32, root: f32, rng: &mut Rng, replacing: Option<(u8, f32)>) ->
             kind = rng.below(5) as u8;
         }
     }
-    let col = palette::hsv(hue, rng.range(0.45, 0.95), rng.range(0.9, 1.0));
+    let (col, center, stem) = element_colors(element, hue, rng);
     // Each one is between 60% and 100% of full size.
     let scale = rng.range(0.6, 1.0);
     Flower {
@@ -588,8 +670,8 @@ fn new_flower(x: f32, root: f32, rng: &mut Rng, replacing: Option<(u8, f32)>) ->
         kind,
         hue,
         col,
-        center: if rng.chance(0.7) { [1.0, 0.85, 0.25] } else { palette::mix(col, [1.0, 1.0, 1.0], 0.6) },
-        stem: palette::mix(palette::STEM, [0.55, 0.85, 0.35], rng.f() * 0.7),
+        center,
+        stem,
         petals: 5 + rng.below(3) as u8,
         size: rng.range(2.0, 3.8) * scale,
         phase: rng.f() * 6.28,
@@ -608,7 +690,81 @@ fn smooth(a: f32, b: f32, x: f32) -> f32 {
 }
 
 impl Flower {
-    fn draw(&self, b: &mut Batch, base: f32, pixel_size: f32, glow: Rgb) {
+    /// The head of a flower made of an element, with its own life (flicker, orbiting motes, twinkling).
+    fn element_head(&self, b: &mut Batch, hx: f32, hy: f32, s: f32, el: Element, t: f32, glow: Rgb) {
+        use std::f32::consts::TAU;
+        let ph = self.phase;
+        let c = [self.col[0], self.col[1], self.col[2], 1.0];
+        let cc = [self.center[0], self.center[1], self.center[2], 1.0];
+        match el {
+            Element::Lightning => {
+                let n = 5 + (self.kind % 3) as usize;
+                for k in 0..n {
+                    let a = k as f32 / n as f32 * TAU + ph;
+                    let flick = 0.8 + 0.4 * (t * 18.0 + k as f32 * 2.3 + ph).sin();
+                    let tip = s * 1.55 * flick;
+                    let (l, r) = (a - 0.28, a + 0.28);
+                    b.tri([hx + l.cos() * s * 0.35, hy + l.sin() * s * 0.35], [hx + r.cos() * s * 0.35, hy + r.sin() * s * 0.35], [hx + a.cos() * tip, hy + a.sin() * tip], c);
+                }
+                b.disc(hx, hy, s * 0.62, [glow[0], glow[1], glow[2], 0.35]);
+                b.disc(hx, hy, s * 0.42, cc);
+                if (t * 11.0 + ph * 3.0).sin() > 0.82 {
+                    // A crackle of lightning leaping off the head.
+                    let pts = [[hx, hy - s * 0.5], [hx + s * 0.5, hy - s * 1.3], [hx - s * 0.3, hy - s * 2.0], [hx + s * 0.4, hy - s * 2.8]];
+                    for w in pts.windows(2) {
+                        b.line(w[0], w[1], 1.0, [1.0, 1.0, 1.0, 0.9]);
+                    }
+                }
+            }
+            Element::Fire => {
+                let fl = (t * 9.0 + ph).sin() * 0.25 * s;
+                b.ellipse(hx + fl * 0.5, hy - s * 0.35, s * 0.62, s * 1.15, fl * 0.05, c);
+                b.tri([hx - s * 0.4, hy - s * 0.7], [hx + s * 0.4, hy - s * 0.7], [hx + fl, hy - s * 1.95], c);
+                b.ellipse(hx + fl * 0.3, hy - s * 0.2, s * 0.42, s * 0.8, 0.0, [1.0, 0.62, 0.12, 1.0]);
+                b.ellipse(hx, hy, s * 0.24, s * 0.45, 0.0, cc);
+            }
+            Element::Ice => {
+                for k in 0..6 {
+                    let a = k as f32 / 6.0 * TAU + ph * 0.3;
+                    b.rect(hx + a.cos() * s * 0.7, hy + a.sin() * s * 0.7, s * 0.85, s * 0.17, a, c);
+                    let lighter = palette::mix(self.col, [1.0, 1.0, 1.0], 0.5);
+                    b.rect(hx + a.cos() * s * 0.5, hy + a.sin() * s * 0.5, s * 0.5, s * 0.1, a + 0.52, [lighter[0], lighter[1], lighter[2], 1.0]);
+                }
+                b.disc(hx, hy, s * 0.3, cc);
+                for k in 0..2 {
+                    let tw = (t * 7.0 + ph + k as f32 * 3.1).sin();
+                    if tw > 0.5 {
+                        let (px, py) = (hx + (ph * 5.0 + k as f32).cos() * s * 1.6, hy + (ph * 5.0 + k as f32).sin() * s * 1.6);
+                        b.line([px - s * 0.3, py], [px + s * 0.3, py], 0.7, [1.0, 1.0, 1.0, tw]);
+                        b.line([px, py - s * 0.3], [px, py + s * 0.3], 0.7, [1.0, 1.0, 1.0, tw]);
+                    }
+                }
+            }
+            Element::Matter => {
+                let spin = ph + t * 0.25;
+                b.rect(hx, hy, s * 0.72, s * 0.72, spin, c);
+                let l = palette::mix(self.col, [1.0, 1.0, 1.0], 0.25);
+                b.rect(hx, hy, s * 0.5, s * 0.5, spin + 0.785, [l[0], l[1], l[2], 1.0]);
+                b.disc(hx, hy, s * 0.28, cc);
+                for k in 0..3 {
+                    let a = t * 1.4 + k as f32 * 2.094 + ph;
+                    b.disc(hx + a.cos() * s * 1.35, hy + a.sin() * s * 0.95, s * 0.18, [0.95, 0.78, 0.38, 0.9]);
+                }
+            }
+            _ => {
+                b.disc(hx, hy, s * 1.9, [0.15, 0.0, 0.3, 0.3]);
+                b.disc(hx, hy, s * 0.85, cc);
+                b.disc(hx, hy, s * 0.5, c);
+                for k in 0..8 {
+                    let a = t * 2.2 + k as f32 * 0.785 + ph;
+                    b.disc(hx + a.cos() * s * 1.0, hy + a.sin() * s * 1.0, s * 0.17, [0.9, 0.35, 1.0, 1.0]);
+                }
+                b.disc(hx, hy, s * 0.2, [0.02, 0.0, 0.05, 1.0]);
+            }
+        }
+    }
+
+    fn draw(&self, b: &mut Batch, base: f32, pixel_size: f32, glow: Rgb, el: Element, t: f32) {
         let h = self.h + self.boost;
         let head = [self.x + self.bend, base - h];
         let ctrl = [self.x + self.bend * 0.1, base - h * 0.6];
@@ -662,6 +818,10 @@ impl Flower {
         let c = [self.col[0], self.col[1], self.col[2], 1.0];
         let cc = [self.center[0], self.center[1], self.center[2], 1.0];
         let [hx, hy] = head;
+        if el != Element::Natural {
+            self.element_head(b, hx, hy, s, el, t, glow);
+            return;
+        }
         match self.kind {
             0 => {
                 for k in 0..self.petals {
@@ -710,14 +870,14 @@ mod tests {
     fn run(bed: &mut Bed, rng: &mut Rng, secs: f32) -> Vec<[f32; 2]> {
         let mut out = Vec::new();
         for _ in 0..(secs * 60.0) as usize {
-            out.extend(bed.step(1.0 / 60.0, 0.6, None, rng, &|_| false));
+            out.extend(bed.step(1.0 / 60.0, 0.6, Element::Natural, None, rng, &|_| false));
         }
         out
     }
 
     fn grown(s: &Surf) -> (Bed, Rng) {
         let mut rng = Rng::new(3);
-        let mut bed = Bed::new(s, &mut rng);
+        let mut bed = Bed::new(s, Element::Natural, &mut rng);
         run(&mut bed, &mut rng, 20.0);
         (bed, rng)
     }
@@ -727,7 +887,7 @@ mod tests {
         let mut rng = Rng::new(9);
         for _ in 0..500 {
             let old = (rng.below(5) as u8, rng.f());
-            let f = new_flower(10.0, 100.0, &mut rng, Some(old));
+            let f = new_flower(10.0, 100.0, &mut rng, Some(old), Element::Natural);
             assert_ne!(f.kind, old.0);
             assert!(hue_distance(f.hue, old.1) >= 0.18);
         }
@@ -786,7 +946,7 @@ mod tests {
         let mut order = Vec::new();
         let mut first_at = None;
         for i in 0..(4 * 60) {
-            for p in bed.step(1.0 / 60.0, 0.6, None, &mut rng, &|_| false) {
+            for p in bed.step(1.0 / 60.0, 0.6, Element::Natural, None, &mut rng, &|_| false) {
                 first_at.get_or_insert(i);
                 order.push(p[0]);
             }

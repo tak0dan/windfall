@@ -4,7 +4,7 @@ use windfall_core::geom::Rect;
 use windfall_core::sim::*;
 
 fn params(effect: Effect) -> Params {
-    Params { effect, intensity: 1.0, melt: false, interact: true, wind: 0.0, ground: true, windows: true, layers: true, pixel: false, pixel_size: 0.0, glow: [1.0, 0.85, 0.3] }
+    Params { effect, intensity: 1.0, melt: false, interact: true, wind: 0.0, ground: true, windows: true, layers: true, pixel: false, pixel_size: 0.0, glow: [1.0, 0.85, 0.3], element: windfall_core::config::Element::Natural }
 }
 
 fn scene(cursor: Option<[f32; 2]>) -> Scene {
@@ -310,4 +310,71 @@ fn a_closed_window_takes_its_lawn_at_once_with_only_a_few_quiet_puffs() {
     assert_eq!(green, 0, "the lawn is still there");
     let blue = b.data.chunks(8).filter(|v| (v[4] - 0.35).abs() < 1e-3 && (v[5] - 0.62).abs() < 1e-3 && (v[6] - 1.0).abs() < 1e-3).count() / 6;
     assert!(blue > 0 && blue < 130, "puffs should be there but few: {blue}");
+}
+
+fn count_color(b: &Batch, c: [f32; 3]) -> usize {
+    b.data.chunks(8).filter(|v| (v[4] - c[0]).abs() < 0.02 && (v[5] - c[1]).abs() < 0.02 && (v[6] - c[2]).abs() < 0.02).count()
+}
+
+#[test]
+fn comets_burst_into_blue_sparks_on_contact_and_do_not_pile() {
+    let mut w = World::new(51);
+    w.set_scene(scene(None));
+    let p = Params { intensity: 1.0, ..params(Effect::Comets) };
+    let mut b = Batch::default();
+    let mut blue = 0;
+    for _ in 0..(20 * 60) {
+        w.step(1.0 / 60.0, &p);
+        b.clear();
+        w.draw(&mut b, &p);
+        blue = blue.max(count_color(&b, [0.4, 0.66, 1.0]));
+    }
+    assert!(blue > 6, "no blue burst when a comet hit something: {blue}");
+    assert_eq!(w.pile_height(1, 700.0), 0.0);
+}
+
+#[test]
+fn hearts_fall_and_burst_pink() {
+    let mut w = World::new(52);
+    w.set_scene(scene(None));
+    let p = Params { intensity: 1.0, ..params(Effect::Hearts) };
+    let mut b = Batch::default();
+    let mut pink = 0;
+    for _ in 0..(25 * 60) {
+        w.step(1.0 / 60.0, &p);
+        b.clear();
+        w.draw(&mut b, &p);
+        pink = pink.max(count_color(&b, [1.0, 0.45, 0.65]));
+    }
+    assert!(pink > 6, "{pink}");
+}
+
+#[test]
+fn warm_lights_drift_and_stay_in_the_air() {
+    let mut w = World::new(53);
+    w.set_scene(scene(None));
+    let p = Params { intensity: 1.0, ..params(Effect::Lights) };
+    for _ in 0..(30 * 60) {
+        w.step(1.0 / 60.0, &p);
+    }
+    let mut b = Batch::default();
+    w.draw(&mut b, &p);
+    assert!(b.vertex_count() > 60, "no lights drawn: {}", b.vertex_count());
+    assert_eq!(w.pile_height(1, 700.0), 0.0);
+}
+
+#[test]
+fn every_element_grows_its_own_flowers_and_things_in_the_air() {
+    use windfall_core::config::Element;
+    for el in [Element::Lightning, Element::Fire, Element::Ice, Element::Matter, Element::Void] {
+        let mut w = World::new(60);
+        w.set_scene(scene(None));
+        let p = Params { element: el, ..params(Effect::Flowers) };
+        for _ in 0..(25 * 60) {
+            w.step(1.0 / 60.0, &p);
+        }
+        let mut b = Batch::default();
+        w.draw(&mut b, &p);
+        assert!(b.vertex_count() > 1500, "{el:?} drew too little");
+    }
 }

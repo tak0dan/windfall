@@ -59,6 +59,8 @@ pub struct Params {
     pub pixel_size: f32,
     /// Colour of the flowers' glow and sparks.
     pub glow: Rgb,
+    /// What the flowers are made of.
+    pub element: crate::config::Element,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -66,6 +68,12 @@ enum Kind {
     Flake,
     Streak,
     Splash,
+    /// A shooting star.
+    Comet,
+    /// A slow circle of warm light.
+    Orb,
+    /// A falling heart.
+    Heart,
 }
 
 struct P {
@@ -92,6 +100,7 @@ struct Puff {
     vx: f32,
     vy: f32,
     life: f32,
+    col: Rgb,
 }
 
 struct Shed {
@@ -118,6 +127,7 @@ pub struct World {
     last_cursor: Option<[f32; 2]>,
     cursor_speed: f32,
     effect: Effect,
+    element: crate::config::Element,
 }
 
 const MAX_PARTS: usize = 6000;
@@ -138,6 +148,7 @@ impl World {
             last_cursor: None,
             cursor_speed: 0.0,
             effect: Effect::Snow,
+            element: crate::config::Element::Natural,
         }
     }
 
@@ -346,6 +357,12 @@ impl World {
     pub fn step(&mut self, dt: f32, p: &Params) {
         let dt = dt.clamp(0.0, 0.05);
         self.time += dt;
+        if p.element != self.element {
+            self.element = p.element;
+            // The flowers are made of something else now: replant.
+            self.flowers.clear();
+            self.orphans.clear();
+        }
         if p.effect != self.effect {
             self.effect = p.effect;
             // A different kind of weather: what lies is swept away.
@@ -391,8 +408,11 @@ impl World {
             Effect::Blossom => 22.0,
             Effect::Rain => 420.0,
             Effect::Flowers => 0.0,
+            Effect::Comets => 1.6,
+            Effect::Lights => 2.0,
+            Effect::Hearts => 9.0,
         } * p.intensity
-            * (self.scene.w / 1920.0).max(0.3)
+            * (self.scene.w / 1920.0).max(if p.effect == Effect::Comets { 0.9 } else { 0.3 })
             * if p.pixel { 0.7 } else { 1.0 };
         self.spawn_acc += per_sec * dt;
         let w = self.scene.w;
@@ -414,6 +434,19 @@ impl World {
                 Effect::Blossom => {
                     let size = self.rng.range(2.5, 4.5);
                     P { kind: Kind::Flake, x, y: -10.0, vx: 0.0, vy: self.rng.range(28.0, 50.0), size, phase: self.rng.f() * 6.28, spin: self.rng.range(-3.0, 3.0), col, heavy: false, life: 0.0 , mass: 0.0 }
+                }
+                Effect::Comets => {
+                    let a = self.rng.range(0.55, 0.95);
+                    let speed = self.rng.range(520.0, 820.0);
+                    P { kind: Kind::Comet, x: self.rng.range(-40.0, w * 0.85), y: self.rng.range(-30.0, 30.0), vx: a.cos() * speed, vy: a.sin() * speed, size: self.rng.range(2.2, 3.6), phase: 0.0, spin: 0.0, col, heavy: false, life: 0.0, mass: 0.0 }
+                }
+                Effect::Lights => {
+                    let life = self.rng.range(9.0, 18.0);
+                    P { kind: Kind::Orb, x: self.rng.range(-60.0, w), y: self.rng.range(self.scene.h * 0.05, self.scene.h + 40.0), vx: self.rng.range(6.0, 22.0), vy: -self.rng.range(6.0, 24.0), size: self.rng.range(14.0, 64.0), phase: self.rng.f() * 6.28, spin: 0.0, col, heavy: false, life, mass: life }
+                }
+                Effect::Hearts => {
+                    let size = self.rng.range(5.0, 9.5);
+                    P { kind: Kind::Heart, x, y: -14.0, vx: 0.0, vy: self.rng.range(45.0, 85.0), size, phase: self.rng.f() * 6.28, spin: self.rng.range(-1.2, 1.2), col, heavy: false, life: 0.0, mass: 0.0 }
                 }
                 _ => P { kind: Kind::Streak, x, y: -20.0, vx: 0.0, vy: self.rng.range(620.0, 900.0), size: self.rng.range(7.0, 14.0), phase: 0.0, spin: 0.0, col, heavy: false, life: 0.0 , mass: 0.0 },
             };
@@ -437,8 +470,17 @@ impl World {
                 q.y += q.vy * dt;
                 return q.life > 0.0;
             }
+            if q.kind == Kind::Orb {
+                q.life -= dt;
+                q.x += (q.vx + (t * 0.35 + q.phase).sin() * 7.0) * dt;
+                q.y += (q.vy + (t * 0.5 + q.phase * 1.7).cos() * 5.0) * dt;
+                return q.life > 0.0 && q.x < w + 120.0 && q.y > -120.0;
+            }
             let oy = q.y;
-            if q.heavy {
+            if q.kind == Kind::Comet {
+                q.x += q.vx * dt;
+                q.y += q.vy * dt;
+            } else if q.heavy {
                 q.vy = (q.vy + 500.0 * dt).min(260.0);
                 q.vx *= 1.0 - 1.5 * dt;
                 q.x += q.vx * dt;
@@ -450,6 +492,7 @@ impl World {
                 let sway = match p.effect {
                     Effect::Leaves => 46.0,
                     Effect::Blossom => 30.0,
+                    Effect::Hearts => 26.0,
                     _ => 14.0,
                 };
                 let freq = match p.effect {
@@ -465,7 +508,7 @@ impl World {
             if let Some(c) = cursor {
                 let (dx, dy) = (q.x - c[0], q.y - c[1]);
                 let d2 = dx * dx + dy * dy;
-                if d2 < 70.0 * 70.0 && q.kind != Kind::Streak {
+                if d2 < 70.0 * 70.0 && q.kind != Kind::Streak && q.kind != Kind::Comet {
                     let d = d2.sqrt().max(1.0);
                     let push = (1.0 - d / 70.0) * 420.0 * dt;
                     q.x += dx / d * push;
@@ -498,6 +541,18 @@ impl World {
                     if !hidden {
                         best = Some((s.id, top));
                     }
+                }
+            }
+            if let Some((_, top)) = best {
+                if matches!(q.kind, Kind::Comet | Kind::Heart) {
+                    // A shooting star (or a heart) bursts into sparks on whatever it meets.
+                    let (col, n, v) = if q.kind == Kind::Comet { ([0.4, 0.66, 1.0], 22, 130.0) } else { ([1.0, 0.45, 0.65], 9, 70.0) };
+                    for _ in 0..n {
+                        let a = self.rng.range(std::f32::consts::PI, std::f32::consts::TAU);
+                        let sp = self.rng.range(0.3, 1.0) * v;
+                        self.puffs.push(Puff { x: q.x, y: top, vx: a.cos() * sp, vy: a.sin() * sp, life: self.rng.range(0.35, 0.8), col });
+                    }
+                    return false;
                 }
             }
             if let Some((id, top)) = best {
@@ -594,11 +649,11 @@ impl World {
                 continue;
             }
             let hidden_at = |x: f32| s.kind != SurfKind::Ground && self.scene.surfs.iter().any(|o| o.id != s.id && o.shown && o.z > s.z && o.rect.contains(x, s.rect.y + 2.0));
-            let bed = self.flowers.entry(s.id).or_insert_with(|| flowers::Bed::new(s, &mut self.rng));
-            puffs.extend(bed.step(dt, p.intensity, cursor, &mut self.rng, &hidden_at));
+            let bed = self.flowers.entry(s.id).or_insert_with(|| flowers::Bed::new(s, p.element, &mut self.rng));
+            puffs.extend(bed.step(dt, p.intensity, p.element, cursor, &mut self.rng, &hidden_at));
         }
         for bed in &mut self.orphans {
-            puffs.extend(bed.step(dt, p.intensity, None, &mut self.rng, &|_| false));
+            puffs.extend(bed.step(dt, p.intensity, p.element, None, &mut self.rng, &|_| false));
         }
         self.orphans.retain(|b| !b.is_empty());
         for h in puffs.into_iter().take(400) {
@@ -611,11 +666,28 @@ impl World {
         for _ in 0..2 {
             let a = self.rng.range(0.0, std::f32::consts::TAU);
             let v = self.rng.range(6.0, 26.0);
-            self.puffs.push(Puff { x: h[0], y: h[1], vx: a.cos() * v, vy: a.sin() * v - 10.0, life: self.rng.range(0.3, 0.6) });
+            self.puffs.push(Puff { x: h[0], y: h[1], vx: a.cos() * v, vy: a.sin() * v - 10.0, life: self.rng.range(0.3, 0.6), col: [0.35, 0.62, 1.0] });
         }
     }
 
     pub fn draw(&self, b: &mut Batch, p: &Params) {
+        let colors = flake_colors(p.effect);
+        // Warm lights glow behind everything else.
+        for q in self.parts.iter().filter(|q| q.kind == Kind::Orb) {
+            let c = colors[(q.col as usize) % colors.len()];
+            let age = q.mass - q.life;
+            let fade = (age / 2.5).min(q.life / 2.5).clamp(0.0, 1.0);
+            let pulse = 0.86 + 0.14 * (self.time * 0.9 + q.phase).sin();
+            let a = 0.34 * fade * pulse;
+            if a < 0.005 {
+                continue;
+            }
+            // A soft round glow made of a few rings, brighter toward the middle (stepped when pixel art).
+            for (k, (rs, al)) in [(1.0f32, 0.5f32), (0.82, 0.7), (0.6, 0.85), (0.36, 1.0)].iter().enumerate() {
+                let _ = k;
+                b.disc(q.x, q.y, q.size * rs, [c[0], c[1], c[2], (a * al * 0.7).min(0.5)]);
+            }
+        }
         // Flowers and piles first, falling things over them.
         for pile in self.piles.values().filter(|pl| !pl.dormant) {
             pile.draw(b, p.effect, self.time, p.pixel);
@@ -632,12 +704,33 @@ impl World {
             bed.draw(b, p.pixel_size, p.glow);
         }
         for pf in &self.puffs {
-            b.disc(pf.x, pf.y, if p.pixel_size > 0.0 { p.pixel_size * 0.5 } else { 0.8 }, [0.35, 0.62, 1.0, (pf.life * 2.5).clamp(0.0, 1.0) * 0.6]);
+            b.disc(pf.x, pf.y, if p.pixel_size > 0.0 { p.pixel_size * 0.6 } else { 1.1 }, [pf.col[0], pf.col[1], pf.col[2], (pf.life * 2.5).clamp(0.0, 1.0) * 0.85]);
         }
-        let colors = flake_colors(p.effect);
         for q in &self.parts {
             let c = colors[(q.col as usize) % colors.len()];
             match q.kind {
+                Kind::Orb => {}
+                Kind::Comet => {
+                    // A bright head and a tail that thins and fades behind it.
+                    let speed = (q.vx * q.vx + q.vy * q.vy).sqrt().max(1.0);
+                    let (dx, dy) = (-q.vx / speed, -q.vy / speed);
+                    let len = 130.0 + q.size * 14.0;
+                    let n = 14;
+                    let mut prev = [q.x, q.y];
+                    for k in 1..=n {
+                        let t = k as f32 / n as f32;
+                        let next = [q.x + dx * len * t, q.y + dy * len * t];
+                        let w = (q.size * 2.3) * (1.0 - t * 0.85);
+                        b.line(prev, next, if p.pixel_size > 0.0 { w.max(p.pixel_size) } else { w }, [0.62 + 0.3 * (1.0 - t), 0.82 + 0.15 * (1.0 - t), 1.0, 0.85 * (1.0 - t).powf(1.4)]);
+                        prev = next;
+                    }
+                    b.disc(q.x, q.y, q.size * 3.0, [0.6, 0.8, 1.0, 0.28]);
+                    b.disc(q.x, q.y, q.size * 1.7, [0.8, 0.9, 1.0, 0.5]);
+                    b.disc(q.x, q.y, q.size * 1.15, [1.0, 1.0, 1.0, 1.0]);
+                }
+                Kind::Heart => {
+                    b.heart(q.x, q.y, q.size, (self.time * q.spin + q.phase).sin() * 0.5, [c[0], c[1], c[2], 0.95]);
+                }
                 Kind::Splash => {
                     let a = (q.life * 5.0).clamp(0.0, 1.0) * 0.8;
                     b.disc(q.x, q.y, q.size, [c[0], c[1], c[2], a]);
@@ -663,5 +756,8 @@ pub fn flake_colors(e: Effect) -> &'static [Rgb] {
         Effect::Blossom => palette::BLOSSOM,
         Effect::Rain => palette::RAIN,
         Effect::Flowers => palette::SNOW,
+        Effect::Comets => palette::COMETS,
+        Effect::Lights => palette::LIGHTS,
+        Effect::Hearts => palette::HEARTS,
     }
 }

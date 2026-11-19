@@ -2,7 +2,7 @@
 Description=Windfall daemon (weather overlay for Hyprland)
 PartOf=graphical-session.target
 After=graphical-session.target
-ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
+ConditionEnvironment=WAYLAND_DISPLAY
 
 [Service]
 ExecStart=/usr/bin/windfalld

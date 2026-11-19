@@ -68,4 +68,17 @@ impl Batch {
         self.tri(p[0], p[1], p[2], col);
         self.tri(p[1], p[3], p[2], col);
     }
+
+    /// A heart sprite: two round lobes and a point, turned by `rot`, with a little shine.
+    pub fn heart(&mut self, x: f32, y: f32, s: f32, rot: f32, col: [f32; 4]) {
+        let (sn, cs) = rot.sin_cos();
+        let at = |dx: f32, dy: f32| [x + dx * cs - dy * sn, y + dx * sn + dy * cs];
+        for sx in [-0.5f32, 0.5] {
+            let c = at(sx * s, -0.25 * s);
+            self.disc(c[0], c[1], 0.56 * s, col);
+        }
+        self.tri(at(-1.04 * s, -0.08 * s), at(1.04 * s, -0.08 * s), at(0.0, 1.12 * s), col);
+        let h = at(-0.55 * s, -0.4 * s);
+        self.disc(h[0], h[1], 0.16 * s, [1.0, 1.0, 1.0, col[3] * 0.7]);
+    }
 }

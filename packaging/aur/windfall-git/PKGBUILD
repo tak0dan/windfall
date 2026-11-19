@@ -11,6 +11,7 @@ makedepends=('cargo')
 optdepends=('ttf-jetbrains-mono: pixel-theme font fallback'
             'ttf-press-start-2p: authentic pixel font for the controller in pixel mode')
 options=('!lto' '!debug')
+install=windfall.install
 provides=('windfall')
 conflicts=('windfall')
 source=("$pkgname::git+$url.git")
@@ -46,5 +47,6 @@ package() {
   install -Dm644 packaging/windfall-controller.desktop "$pkgdir/usr/share/applications/io.github.tak0dan.Windfall.desktop"
   install -Dm644 packaging/windfall.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/windfall.svg"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 packaging/windfalld-autostart.desktop "$pkgdir/etc/xdg/autostart/windfalld.desktop"
   install -Dm644 packaging/windfalld.service "$pkgdir/usr/lib/systemd/user/windfalld.service"
 }

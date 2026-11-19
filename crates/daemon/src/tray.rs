@@ -3,7 +3,7 @@
 use crate::msg::Msg;
 use calloop::channel::Sender;
 use ksni::menu::*;
-use windfall_core::config::{Config, Effect, Patch, Renderer};
+use windfall_core::config::{Config, Effect, Element, Patch, Renderer};
 
 pub struct Tray {
     pub config: Config,
@@ -58,11 +58,22 @@ impl ksni::Tray for Tray {
         vec![
             StandardItem { label: "Open controller".into(), activate: Box::new(|t: &mut Tray| { let _ = t.tx.send(Msg::OpenGui); }), ..Default::default() }.into(),
             MenuItem::Separator,
-            CheckmarkItem { label: "Enabled".into(), checked: c.enabled, activate: Box::new(|t: &mut Tray| { let _ = t.tx.send(Msg::Toggle); }), ..Default::default() }.into(),
+            CheckmarkItem { label: "Display".into(), checked: c.enabled, activate: Box::new(|t: &mut Tray| { let _ = t.tx.send(Msg::Toggle); }), ..Default::default() }.into(),
             RadioGroup {
                 selected: Effect::ALL.iter().position(|e| *e == c.effect).unwrap_or(0),
                 select: Box::new(|t: &mut Tray, i| { let _ = t.tx.send(Msg::Patch(Patch { effect: Some(Effect::ALL[i]), ..Default::default() })); }),
                 options: Effect::ALL.iter().map(|e| RadioItem { label: e.title().into(), ..Default::default() }).collect(),
+            }
+            .into(),
+            SubMenu {
+                label: "Flower element".into(),
+                submenu: vec![RadioGroup {
+                    selected: Element::ALL.iter().position(|e| *e == c.element).unwrap_or(0),
+                    select: Box::new(|t: &mut Tray, i| { let _ = t.tx.send(Msg::Patch(Patch { element: Some(Element::ALL[i]), effect: Some(Effect::Flowers), ..Default::default() })); }),
+                    options: Element::ALL.iter().map(|e| RadioItem { label: e.title().into(), ..Default::default() }).collect(),
+                }
+                .into()],
+                ..Default::default()
             }
             .into(),
             MenuItem::Separator,
@@ -91,6 +102,9 @@ fn glyph(effect: Effect, pixel: bool, enabled: bool) -> (Vec<u8>, i32) {
         Effect::Blossom => (1.0, 0.55, 0.72),
         Effect::Rain => (0.45, 0.68, 0.98),
         Effect::Flowers => (1.0, 0.82, 0.25),
+        Effect::Comets => (0.62, 0.82, 1.0),
+        Effect::Lights => (1.0, 0.85, 0.4),
+        Effect::Hearts => (1.0, 0.4, 0.6),
     };
     let alpha_scale = if enabled { 1.0 } else { 0.4 };
     let ns = n as f32;
@@ -112,6 +126,15 @@ fn glyph(effect: Effect, pixel: bool, enabled: bool) -> (Vec<u8>, i32) {
                 Effect::Rain => {
                     let drop = |cx: f32, cy: f32| { let (dx, dy) = (x - cx, y - cy); ((dx * 0.9 + dy * 0.35).abs() < 0.13 && dy.abs() < 0.32) as i32 as f32 };
                     drop(-0.45, -0.4).max(drop(0.1, -0.1)).max(drop(0.55, 0.3)).max(drop(-0.3, 0.45))
+                }
+                Effect::Comets => {
+                    let tail = ((x - y).abs() < 0.13 && x > -0.85 && x < 0.45) as i32 as f32;
+                    tail.max(((x - 0.5).powi(2) + (y - 0.5).powi(2)).sqrt().lt(&0.28) as i32 as f32)
+                }
+                Effect::Lights => (d < 0.72) as i32 as f32,
+                Effect::Hearts => {
+                    let (hx, hy) = (x * 1.25, -y * 1.25 - 0.15);
+                    ((hx * hx + hy * hy - 1.0).powi(3) - hx * hx * hy.powi(3) <= 0.0) as i32 as f32
                 }
                 Effect::Flowers => {
                     let stem = (x.abs() < 0.07 && y > 0.0 && y < 0.95) as i32 as f32;

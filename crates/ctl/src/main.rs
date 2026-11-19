@@ -1,4 +1,4 @@
-use windfall_core::config::{BarMode, Effect, Patch, Renderer};
+use windfall_core::config::{BarMode, Effect, Element, Patch, Renderer};
 use windfall_core::ipc::{self, Request, Response};
 use std::io::{BufRead, BufReader};
 
@@ -7,8 +7,9 @@ const HELP: &str = "windfallctl - control the running windfalld
 usage: windfallctl <command>
 
   status [--json]       show the current settings
-  toggle | on | off     enable or disable the overlay
-  effect <name>         snow | leaves | blossom | rain | flowers
+  toggle | on | off     show or hide the effect (remembered between sessions)
+  effect <name>         snow | leaves | blossom | rain | flowers | comets | lights | hearts
+  element <name>        what the flowers are made of: natural | lightning | fire | ice | matter | void
   renderer <name>       smooth | pixel
   intensity <0-100>     how much falls or grows
   opacity <10-100>      overall opacity
@@ -64,6 +65,7 @@ fn run(args: &[String]) -> Result<(), String> {
         "clear" => Request::Clear,
         "quit" => Request::Quit,
         "effect" => set(Patch { effect: Some(args.get(1).and_then(|s| Effect::parse(s)).ok_or("unknown effect")?), ..Default::default() }),
+        "element" => set(Patch { element: Some(args.get(1).and_then(|s| Element::parse(s)).ok_or("unknown element")?), ..Default::default() }),
         "renderer" => set(Patch { renderer: Some(args.get(1).and_then(|s| Renderer::parse(s)).ok_or("unknown renderer")?), ..Default::default() }),
         "intensity" => set(Patch { intensity: Some(num(args.get(1), 0.0, 100.0)? / 100.0), ..Default::default() }),
         "opacity" => set(Patch { opacity: Some(num(args.get(1), 10.0, 100.0)? / 100.0), ..Default::default() }),
