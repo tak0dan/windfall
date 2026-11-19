@@ -224,6 +224,13 @@ impl Config {
         }
     }
 
+    #[cfg(windows)]
+    pub fn path() -> PathBuf {
+        let base = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+        base.join("windfall").join("config.toml")
+    }
+
+    #[cfg(not(windows))]
     pub fn path() -> PathBuf {
         let base = std::env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)

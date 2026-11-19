@@ -4,6 +4,7 @@
 pub mod config;
 pub mod draw;
 pub mod geom;
+pub mod icon;
 pub mod ipc;
 pub mod palette;
 pub mod rng;
