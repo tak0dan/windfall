@@ -60,7 +60,9 @@ in an Edge app window; `windfallctl.exe` works exactly like on Linux. Settings a
 
 Windows differences: windows' top edges and the taskbar's top edge collect things (there are no bars/panels to
 detect), the overlay is a click-through layered window, and fullscreen apps pause it unless "Over fullscreen" is on.
-To build it yourself, run `windows/build.sh` (Docker only; it produces `dist/Windfall-Setup.exe`).
+![Windfall on Windows 11](docs/windows-controller.png)
+
+Tested on Windows 11 (LTSC 24H2). To build it yourself, run `windows/build.sh` (Docker only; it produces `dist/Windfall-Setup.exe`).
 
 ## Use
 
