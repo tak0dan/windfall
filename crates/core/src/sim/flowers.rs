@@ -520,11 +520,11 @@ impl Bed {
     fn emit(&mut self, dt: f32, rng: &mut Rng) {
         let rate = match self.element {
             Element::Natural => return,
-            Element::Fire => 0.5,
+            Element::Fire => 0.08,
             Element::Ice => 0.3,
-            Element::Lightning => 0.3,
+            Element::Lightning => 0.1,
             Element::Matter => 0.22,
-            Element::Void => 0.4,
+            Element::Void => 0.1,
         };
         if self.sparks.len() > 500 {
             return;
@@ -536,7 +536,7 @@ impl Bed {
             }
             let (hx, hy) = (f.x + f.bend, f.root - f.h - f.boost);
             let sp = match self.element {
-                Element::Fire => Spark { x: hx + rng.range(-3.0, 3.0), y: hy - 2.0, vx: rng.range(-8.0, 8.0), vy: -rng.range(25.0, 60.0), life: rng.range(0.5, 1.0), col: Some([1.0, rng.range(0.4, 0.75), 0.1]), g: -4.0, size: rng.range(0.8, 1.4), twinkle: false },
+                Element::Fire => Spark { x: hx + rng.range(-3.0, 3.0), y: hy - 2.0, vx: rng.range(-8.0, 8.0), vy: -rng.range(15.0, 35.0), life: rng.range(0.5, 1.0), col: Some([1.0, rng.range(0.4, 0.75), 0.1]), g: -4.0, size: rng.range(0.6, 1.0), twinkle: false },
                 Element::Ice => Spark { x: hx + rng.range(-7.0, 7.0), y: hy + rng.range(-7.0, 5.0), vx: rng.range(-4.0, 4.0), vy: rng.range(2.0, 10.0), life: rng.range(0.8, 1.5), col: Some([0.82, 0.96, 1.0]), g: 4.0, size: rng.range(0.7, 1.2), twinkle: true },
                 Element::Lightning => Spark { x: hx + rng.range(-6.0, 6.0), y: hy + rng.range(-6.0, 6.0), vx: rng.range(-70.0, 70.0), vy: rng.range(-70.0, 70.0), life: rng.range(0.12, 0.3), col: Some([1.0, 0.96, 0.55]), g: 0.0, size: rng.range(0.6, 1.0), twinkle: false },
                 Element::Matter => Spark { x: hx + rng.range(-8.0, 8.0), y: hy + rng.range(-6.0, 6.0), vx: rng.range(-6.0, 6.0), vy: rng.range(-10.0, 4.0), life: rng.range(1.0, 1.8), col: Some([0.95, 0.75, 0.35]), g: 0.0, size: rng.range(0.7, 1.1), twinkle: false },
@@ -626,11 +626,18 @@ fn element_colors(el: Element, t: f32, rng: &mut Rng) -> (Rgb, Rgb, Rgb) {
             let center = if rng.chance(0.7) { [1.0, 0.85, 0.25] } else { palette::mix(col, [1.0, 1.0, 1.0], 0.6) };
             (col, center, palette::mix(palette::STEM, [0.55, 0.85, 0.35], rng.f() * 0.7))
         }
-        Element::Lightning => (palette::mix([1.0, 0.95, 0.35], [0.65, 0.82, 1.0], t), [1.0, 1.0, 1.0], palette::mix([0.2, 0.42, 0.4], [0.5, 0.6, 0.2], rng.f())),
-        Element::Fire => (palette::hsv(t * 0.12, 0.95, 1.0), [1.0, 0.92, 0.45], palette::mix([0.2, 0.1, 0.07], [0.45, 0.18, 0.06], rng.f())),
+        // Pale yellows and blue-whites, otherwise an ordinary flower.
+        Element::Lightning => (palette::mix([1.0, 0.93, 0.45], [0.8, 0.9, 1.0], t), [1.0, 1.0, 0.92], palette::mix(palette::STEM, [0.45, 0.6, 0.3], rng.f() * 0.5)),
+        // Tulips from yellow through orange to red.
+        Element::Fire => {
+            let (yellow, orange, red) = ([1.0, 0.85, 0.2], [1.0, 0.5, 0.1], [0.86, 0.12, 0.08]);
+            let col = if t < 0.5 { palette::mix(yellow, orange, t * 2.0) } else { palette::mix(orange, red, (t - 0.5) * 2.0) };
+            (col, [1.0, 0.9, 0.35], palette::mix(palette::STEM, [0.5, 0.8, 0.3], rng.f() * 0.5))
+        }
         Element::Ice => (palette::mix([0.62, 0.88, 1.0], [0.95, 1.0, 1.0], t), [1.0, 1.0, 1.0], palette::mix([0.5, 0.72, 0.85], [0.75, 0.9, 0.95], rng.f())),
         Element::Matter => (palette::mix([0.82, 0.62, 0.24], [0.5, 0.42, 0.34], t), [0.22, 0.18, 0.13], palette::mix([0.35, 0.4, 0.18], [0.5, 0.45, 0.2], rng.f())),
-        Element::Void => (palette::mix([0.2, 0.05, 0.36], [0.5, 0.12, 0.65], t), [0.02, 0.0, 0.05], palette::mix([0.1, 0.04, 0.18], [0.22, 0.08, 0.34], rng.f())),
+        // Deep violet petals with a very dark heart.
+        Element::Void => (palette::mix([0.26, 0.1, 0.46], [0.46, 0.2, 0.66], t), [0.05, 0.0, 0.1], palette::mix(palette::STEM, [0.3, 0.45, 0.35], rng.f() * 0.5)),
     }
 }
 
@@ -638,11 +645,11 @@ fn element_colors(el: Element, t: f32, rng: &mut Rng) -> (Rgb, Rgb, Rgb) {
 fn grass_colors(el: Element) -> (Rgb, Rgb) {
     match el {
         Element::Natural => ([0.12, 0.42, 0.16], [0.40, 0.76, 0.26]),
-        Element::Lightning => ([0.08, 0.3, 0.25], [0.72, 0.86, 0.22]),
-        Element::Fire => ([0.14, 0.08, 0.06], [0.62, 0.24, 0.05]),
+        Element::Lightning => ([0.12, 0.4, 0.2], [0.46, 0.76, 0.24]),
+        Element::Fire => ([0.12, 0.42, 0.16], [0.40, 0.76, 0.26]),
         Element::Ice => ([0.45, 0.66, 0.8], [0.82, 0.95, 1.0]),
         Element::Matter => ([0.25, 0.25, 0.12], [0.56, 0.5, 0.2]),
-        Element::Void => ([0.07, 0.03, 0.14], [0.3, 0.1, 0.45]),
+        Element::Void => ([0.1, 0.33, 0.2], [0.3, 0.6, 0.34]),
     }
 }
 
@@ -659,6 +666,9 @@ fn new_flower(x: f32, root: f32, rng: &mut Rng, replacing: Option<(u8, f32)>, el
         }
     }
     let (col, center, stem) = element_colors(element, hue, rng);
+    if element == Element::Fire {
+        kind = 1; // tulips
+    }
     // Each one is between 60% and 100% of full size.
     let scale = rng.range(0.6, 1.0);
     Flower {
@@ -691,38 +701,12 @@ fn smooth(a: f32, b: f32, x: f32) -> f32 {
 
 impl Flower {
     /// The head of a flower made of an element, with its own life (flicker, orbiting motes, twinkling).
-    fn element_head(&self, b: &mut Batch, hx: f32, hy: f32, s: f32, el: Element, t: f32, glow: Rgb) {
+    fn element_head(&self, b: &mut Batch, hx: f32, hy: f32, s: f32, el: Element, t: f32, _glow: Rgb) {
         use std::f32::consts::TAU;
         let ph = self.phase;
         let c = [self.col[0], self.col[1], self.col[2], 1.0];
         let cc = [self.center[0], self.center[1], self.center[2], 1.0];
         match el {
-            Element::Lightning => {
-                let n = 5 + (self.kind % 3) as usize;
-                for k in 0..n {
-                    let a = k as f32 / n as f32 * TAU + ph;
-                    let flick = 0.8 + 0.4 * (t * 18.0 + k as f32 * 2.3 + ph).sin();
-                    let tip = s * 1.55 * flick;
-                    let (l, r) = (a - 0.28, a + 0.28);
-                    b.tri([hx + l.cos() * s * 0.35, hy + l.sin() * s * 0.35], [hx + r.cos() * s * 0.35, hy + r.sin() * s * 0.35], [hx + a.cos() * tip, hy + a.sin() * tip], c);
-                }
-                b.disc(hx, hy, s * 0.62, [glow[0], glow[1], glow[2], 0.35]);
-                b.disc(hx, hy, s * 0.42, cc);
-                if (t * 11.0 + ph * 3.0).sin() > 0.82 {
-                    // A crackle of lightning leaping off the head.
-                    let pts = [[hx, hy - s * 0.5], [hx + s * 0.5, hy - s * 1.3], [hx - s * 0.3, hy - s * 2.0], [hx + s * 0.4, hy - s * 2.8]];
-                    for w in pts.windows(2) {
-                        b.line(w[0], w[1], 1.0, [1.0, 1.0, 1.0, 0.9]);
-                    }
-                }
-            }
-            Element::Fire => {
-                let fl = (t * 9.0 + ph).sin() * 0.25 * s;
-                b.ellipse(hx + fl * 0.5, hy - s * 0.35, s * 0.62, s * 1.15, fl * 0.05, c);
-                b.tri([hx - s * 0.4, hy - s * 0.7], [hx + s * 0.4, hy - s * 0.7], [hx + fl, hy - s * 1.95], c);
-                b.ellipse(hx + fl * 0.3, hy - s * 0.2, s * 0.42, s * 0.8, 0.0, [1.0, 0.62, 0.12, 1.0]);
-                b.ellipse(hx, hy, s * 0.24, s * 0.45, 0.0, cc);
-            }
             Element::Ice => {
                 for k in 0..6 {
                     let a = k as f32 / 6.0 * TAU + ph * 0.3;
@@ -751,16 +735,7 @@ impl Flower {
                     b.disc(hx + a.cos() * s * 1.35, hy + a.sin() * s * 0.95, s * 0.18, [0.95, 0.78, 0.38, 0.9]);
                 }
             }
-            _ => {
-                b.disc(hx, hy, s * 1.9, [0.15, 0.0, 0.3, 0.3]);
-                b.disc(hx, hy, s * 0.85, cc);
-                b.disc(hx, hy, s * 0.5, c);
-                for k in 0..8 {
-                    let a = t * 2.2 + k as f32 * 0.785 + ph;
-                    b.disc(hx + a.cos() * s * 1.0, hy + a.sin() * s * 1.0, s * 0.17, [0.9, 0.35, 1.0, 1.0]);
-                }
-                b.disc(hx, hy, s * 0.2, [0.02, 0.0, 0.05, 1.0]);
-            }
+            _ => {}
         }
     }
 
@@ -775,7 +750,7 @@ impl Flower {
         let sc = [self.stem[0], self.stem[1], self.stem[2], 1.0];
         // One art pixel wide in the pixel renderer, a fine line otherwise.
         let width = if pixel_size > 0.0 { pixel_size } else { 1.3 };
-        let segs = if h < 10.0 { 2 } else { 4 };
+        let segs = if h < 10.0 && el != Element::Fire { 2 } else { 4 };
         // Light given off by the plant being played with: a parabola of light standing on it (widest at the
         // ground, narrowing to the head), a halo along the stem and one around the head.
         if self.excite > 0.03 {
@@ -801,7 +776,13 @@ impl Flower {
         let mut prev = at(0.0);
         for i in 1..=segs {
             let p = at(i as f32 / segs as f32);
-            b.line(prev, p, width, sc);
+            // A fire flower's stem is burnt through its top quarter: charred black, with a glowing edge.
+            let burnt = el == Element::Fire && i == segs;
+            b.line(prev, p, width, if burnt { [0.13, 0.08, 0.06, 1.0] } else { sc });
+            if burnt {
+                let at_edge = at(1.0 - 1.0 / segs as f32);
+                b.disc(at_edge[0], at_edge[1], width * 0.7 + 0.3 + 0.3 * (t * 6.0 + self.phase).sin().abs(), [1.0, 0.45, 0.08, 0.9]);
+            }
             prev = p;
         }
         if h > 10.0 {
@@ -818,7 +799,7 @@ impl Flower {
         let c = [self.col[0], self.col[1], self.col[2], 1.0];
         let cc = [self.center[0], self.center[1], self.center[2], 1.0];
         let [hx, hy] = head;
-        if el != Element::Natural {
+        if matches!(el, Element::Ice | Element::Matter) {
             self.element_head(b, hx, hy, s, el, t, glow);
             return;
         }
@@ -833,7 +814,8 @@ impl Flower {
             1 => {
                 b.ellipse(hx - s * 0.4, hy, s * 0.45, s * 0.8, -0.3, c);
                 b.ellipse(hx + s * 0.4, hy, s * 0.45, s * 0.8, 0.3, c);
-                b.ellipse(hx, hy - s * 0.15, s * 0.5, s * 0.9, 0.0, [self.col[0] * 0.9, self.col[1] * 0.9, self.col[2] * 0.9, 1.0]);
+                let cen = if el == Element::Fire { palette::mix(self.col, [1.0, 0.9, 0.3], 0.55) } else { [self.col[0] * 0.9, self.col[1] * 0.9, self.col[2] * 0.9] };
+                b.ellipse(hx, hy - s * 0.15, s * 0.5, s * 0.9, 0.0, [cen[0], cen[1], cen[2], 1.0]);
             }
             2 => {
                 b.tri([hx - s * 0.7, hy - s * 0.1], [hx + s * 0.7, hy - s * 0.1], [hx, hy + s * 0.9], c);
