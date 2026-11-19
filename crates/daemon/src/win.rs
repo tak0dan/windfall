@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Transform};
+use crate::raster::Raster;
 use windfall_core::config::{BarMode, Config, Effect, Element, Patch, Renderer};
-use windfall_core::draw::{Batch, FLOATS_PER_VERTEX};
+use windfall_core::draw::Batch;
 use windfall_core::geom::Rect;
 use windfall_core::ipc::{Request, Response, State};
 use windfall_core::sim::{Params, Scene, Surf, SurfKind, World};
@@ -63,7 +63,7 @@ struct Overlay {
     mem: HDC,
     dib: HBITMAP,
     bits: *mut u8,
-    pm: Pixmap,
+    small: Vec<u8>,
     world: World,
     shown: bool,
 }
@@ -84,6 +84,7 @@ struct App {
     batch: Batch,
     last: Instant,
     scene_at: Instant,
+    logged: Instant,
     hwnd: HWND,
     icon: HICON,
     quit: bool,
@@ -130,7 +131,7 @@ pub fn main() {
         let config = Config::load();
         let (g, size) = windfall_core::icon::glyph(config.effect, config.renderer == Renderer::Pixel, config.enabled);
         let icon = make_icon(&g, size);
-        let mut app = App { config, overlays: Vec::new(), scenes: Vec::new(), rx, port, batch: Batch::default(), last: Instant::now(), scene_at: Instant::now() - Duration::from_secs(1), hwnd, icon, quit: false };
+        let mut app = App { config, overlays: Vec::new(), scenes: Vec::new(), rx, port, batch: Batch::default(), last: Instant::now(), scene_at: Instant::now() - Duration::from_secs(1), logged: Instant::now(), hwnd, icon, quit: false };
         register_overlay_class(hinst);
         create_overlays(&mut app);
         tray_add(&app);
@@ -260,9 +261,8 @@ unsafe fn create_overlays(app: &mut App) {
         let dib = CreateDIBSection(screen, &bmi, DIB_RGB_COLORS, &mut bits, null_mut(), 0);
         SelectObject(mem, dib);
         ReleaseDC(null_mut(), screen);
-        let Some(pm) = Pixmap::new(w as u32, h as u32) else { continue };
         let seed = (hwnd as usize as u64).wrapping_mul(7919) ^ 0x5eed;
-        app.overlays.push(Overlay { hwnd, name: m.name.clone(), rect: [x, y, w, h], scale: m.scale, lw: w as f32 / m.scale, lh: h as f32 / m.scale, mem, dib, bits: bits as *mut u8, pm, world: World::new(seed), shown: false });
+        app.overlays.push(Overlay { hwnd, name: m.name.clone(), rect: [x, y, w, h], scale: m.scale, lw: w as f32 / m.scale, lh: h as f32 / m.scale, mem, dib, bits: bits as *mut u8, small: Vec::new(), world: World::new(seed), shown: false });
     }
     log(&format!("{} overlay(s)", app.overlays.len()));
 }
@@ -408,6 +408,13 @@ fn tick(app: &mut App) {
         app.scene_at = now;
         app.scenes = unsafe { read_scenes() }.into_iter().map(|(_, s, f)| (s, f)).collect::<Vec<_>>();
     }
+    if now.duration_since(app.logged) >= Duration::from_secs(5) {
+        app.logged = now;
+        for (i, (sc, fs)) in app.scenes.iter().enumerate() {
+            let ground = sc.surfs.iter().find(|s| s.kind == SurfKind::Ground).map(|s| s.rect.y);
+            log(&format!("scene {i}: {}x{} surfaces={} ground={ground:?} fullscreen={fs} shown={:?} parts={}", sc.w, sc.h, sc.surfs.len(), app.overlays.get(i).map(|o| o.shown), app.overlays.get(i).map_or(0, |o| o.world.particle_count())));
+        }
+    }
     let p = params(&app.config);
     let pixel = app.config.renderer == Renderer::Pixel;
     let interval = if pixel { 33 } else { 16 };
@@ -442,93 +449,44 @@ fn tick(app: &mut App) {
 /// Draws the batch into the overlay's bitmap and hands it to the window.
 fn present(ov: &mut Overlay, batch: &[f32], c: &Config) {
     let (w, h) = (ov.rect[2] as usize, ov.rect[3] as usize);
-    ov.pm.fill(Color::TRANSPARENT);
-    let opacity = c.opacity;
     unsafe {
         let dst = std::slice::from_raw_parts_mut(ov.bits, w * h * 4);
         if c.renderer == Renderer::Pixel {
+            // Art pixels: draw small without anti-aliasing, then blow it up with hard edges and fewer colours.
             let n = ((c.pixel_size as f32) * ov.scale).round().max(1.0) as usize;
             let (sw, sh) = (w.div_ceil(n), h.div_ceil(n));
-            if let Some(mut small) = Pixmap::new(sw as u32, sh as u32) {
-                rasterize(batch, &mut small, Transform::from_scale(1.0 / c.pixel_size as f32, 1.0 / c.pixel_size as f32), false);
-                let levels = (c.pixel_levels.max(2) - 1) as f32;
-                let sd = small.data();
-                for y in 0..h {
-                    for x in 0..w {
-                        let si = ((y / n) * sw + (x / n)) * 4;
-                        let (r, g, b, a) = (sd[si], sd[si + 1], sd[si + 2], sd[si + 3]);
-                        let o = (y * w + x) * 4;
-                        if a < 100 {
-                            dst[o..o + 4].copy_from_slice(&[0, 0, 0, 0]);
-                            continue;
-                        }
-                        let af = a as f32 / 255.0;
-                        let q = |v: u8| ((((v as f32 / 255.0) / af).clamp(0.0, 1.0) * levels).round() / levels * opacity * 255.0) as u8;
-                        let al = (opacity * 255.0) as u8;
-                        dst[o] = q(b);
-                        dst[o + 1] = q(g);
-                        dst[o + 2] = q(r);
-                        dst[o + 3] = al;
+            ov.small.clear();
+            ov.small.resize(sw * sh * 4, 0);
+            let k = 1.0 / c.pixel_size as f32;
+            Raster { buf: &mut ov.small, w: sw as i32, h: sh as i32, aa: false, opacity: 1.0 }.batch(batch, k, k);
+            let levels = (c.pixel_levels.max(2) - 1) as f32;
+            let al = (c.opacity * 255.0) as u8;
+            for y in 0..h {
+                for x in 0..w {
+                    let si = ((y / n) * sw + (x / n)) * 4;
+                    let o = (y * w + x) * 4;
+                    let a = ov.small[si + 3];
+                    if a < 100 {
+                        dst[o..o + 4].copy_from_slice(&[0, 0, 0, 0]);
+                        continue;
                     }
+                    let af = a as f32 / 255.0;
+                    let q = |v: u8| ((((v as f32 / 255.0) / af).clamp(0.0, 1.0) * levels).round() / levels * c.opacity * 255.0) as u8;
+                    dst[o] = q(ov.small[si]);
+                    dst[o + 1] = q(ov.small[si + 1]);
+                    dst[o + 2] = q(ov.small[si + 2]);
+                    dst[o + 3] = al;
                 }
             }
         } else {
-            rasterize(batch, &mut ov.pm, Transform::from_scale(ov.scale, ov.scale), true);
-            let sd = ov.pm.data();
-            for i in 0..w * h {
-                let s = i * 4;
-                dst[s] = (sd[s + 2] as f32 * opacity) as u8;
-                dst[s + 1] = (sd[s + 1] as f32 * opacity) as u8;
-                dst[s + 2] = (sd[s] as f32 * opacity) as u8;
-                dst[s + 3] = (sd[s + 3] as f32 * opacity) as u8;
-            }
+            dst.fill(0);
+            Raster { buf: dst, w: w as i32, h: h as i32, aa: true, opacity: c.opacity }.batch(batch, ov.scale, ov.scale);
         }
         let size = SIZE { cx: w as i32, cy: h as i32 };
         let src = POINT { x: 0, y: 0 };
         let pos = POINT { x: ov.rect[0], y: ov.rect[1] };
         let blend = BLENDFUNCTION { BlendOp: AC_SRC_OVER as u8, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: AC_SRC_ALPHA as u8 };
         UpdateLayeredWindow(ov.hwnd, null_mut(), &pos, &size, ov.mem, &src, 0, &blend, ULW_ALPHA);
-    }
-}
-
-/// Replays the batch of triangles: disc/ellipse quads (recognised by their uv corners) become real ellipses,
-/// everything else flat triangles.
-fn rasterize(data: &[f32], pm: &mut Pixmap, base: Transform, aa: bool) {
-    const V: usize = FLOATS_PER_VERTEX;
-    let n = data.len() / V;
-    let vert = |k: usize| &data[k * V..k * V + V];
-    let circle = PathBuilder::from_circle(0.0, 0.0, 1.0).unwrap();
-    let mut paint = Paint::default();
-    paint.anti_alias = aa;
-    let mut i = 0;
-    while i + 3 <= n {
-        let a = vert(i);
-        if i + 6 <= n && (a[2] != 0.0 || a[3] != 0.0) {
-            let (v0, v1, v2) = (vert(i), vert(i + 1), vert(i + 2));
-            let ex = ((v1[0] - v0[0]) / 2.0, (v1[1] - v0[1]) / 2.0);
-            let ey = ((v2[0] - v0[0]) / 2.0, (v2[1] - v0[1]) / 2.0);
-            let (cx, cy) = (v0[0] + ex.0 + ey.0, v0[1] + ex.1 + ey.1);
-            if let Some(c) = Color::from_rgba(v0[4].clamp(0.0, 1.0), v0[5].clamp(0.0, 1.0), v0[6].clamp(0.0, 1.0), v0[7].clamp(0.0, 1.0)) {
-                paint.set_color(c);
-                pm.fill_path(&circle, &paint, FillRule::Winding, base.pre_concat(Transform::from_row(ex.0, ex.1, ey.0, ey.1, cx, cy)), None);
-            }
-            i += 6;
-            continue;
-        }
-        let (b, c) = (vert(i + 1), vert(i + 2));
-        let avg = |k: usize| ((a[k] + b[k] + c[k]) / 3.0).clamp(0.0, 1.0);
-        if let Some(col) = Color::from_rgba(avg(4), avg(5), avg(6), avg(7)) {
-            paint.set_color(col);
-            let mut pb = PathBuilder::new();
-            pb.move_to(a[0], a[1]);
-            pb.line_to(b[0], b[1]);
-            pb.line_to(c[0], c[1]);
-            pb.close();
-            if let Some(path) = pb.finish() {
-                pm.fill_path(&path, &paint, FillRule::Winding, base, None);
-            }
-        }
-        i += 3;
     }
 }
 

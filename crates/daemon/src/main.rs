@@ -2,6 +2,7 @@
 //! Linux (Hyprland) and Windows have their own backends; the simulation is shared (windfall-core).
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod raster;
 #[cfg(unix)]
 mod capture;
 #[cfg(unix)]

@@ -22,7 +22,6 @@ ksni = { version = "0.3", default-features = false, features = ["blocking", "asy
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-tiny-skia = "0.11"
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
