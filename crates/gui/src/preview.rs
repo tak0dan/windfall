@@ -220,12 +220,15 @@ fn _unused(_: Effect) {}
 
 /// Renders the preview offscreen after `secs` of simulated time and saves it as a PNG (used for screenshots
 /// and checks; needs no display).
-pub fn render_png(config: &Config, secs: f32, w: i32, h: i32, path: &str) -> Result<(), String> {
+pub fn render_png(config: &Config, secs: f32, w: i32, h: i32, path: &str, cursor: Option<[f32; 2]>) -> Result<(), String> {
     let mut st = State { config: config.clone(), world: World::new(7), batch: Batch::default(), cursor: None, last: None, size: (w as f32, h as f32) };
     let p = params(&st.config);
     let dt = if config.renderer == Renderer::Pixel { 1.0 / 30.0 } else { 1.0 / 60.0 };
-    st.world.set_scene(scene(w as f32, h as f32, None));
-    for _ in 0..(secs / dt) as usize {
+    let steps = (secs / dt) as usize;
+    for i in 0..steps {
+        // The pointer stays over the lawn for the last two seconds, if there is one.
+        let c = if (steps - i) as f32 * dt <= 2.0 { cursor } else { None };
+        st.world.set_scene(scene(w as f32, h as f32, c));
         st.world.step(dt, &p);
     }
     let surface = ImageSurface::create(Format::ARgb32, w, h).map_err(|e| e.to_string())?;

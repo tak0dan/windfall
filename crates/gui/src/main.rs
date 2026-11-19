@@ -24,7 +24,11 @@ fn main() -> glib::ExitCode {
         c.intensity = 0.8;
         let secs = args.get(6).and_then(|s| s.parse().ok()).unwrap_or(25.0);
         let out = args.get(2).cloned().unwrap_or_else(|| "preview.png".into());
-        return match preview::render_png(&c, secs, 640, 260, &out) {
+        let cursor = match (args.get(7).and_then(|s| s.parse::<f32>().ok()), args.get(8).and_then(|s| s.parse::<f32>().ok())) {
+            (Some(x), Some(y)) => Some([x, y]),
+            _ => None,
+        };
+        return match preview::render_png(&c, secs, 640, 260, &out, cursor) {
             Ok(()) => glib::ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("windfall-gui: {e}");

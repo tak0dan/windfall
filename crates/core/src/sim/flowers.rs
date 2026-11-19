@@ -703,6 +703,99 @@ fn smooth(a: f32, b: f32, x: f32) -> f32 {
 }
 
 impl Flower {
+    /// The glow of a flower that is being touched. Every element has its own: a soft golden parabola of light
+    /// (natural), crackling violet arcs (lightning), a flame-shaped lick of warmth (fire), crisp pale rings
+    /// with twinkling glints (ice), a slow dusty gold halo (matter), or a dark halo with a bright rim (void).
+    #[allow(clippy::too_many_arguments)]
+    fn glow(&self, b: &mut Batch, el: Element, t: f32, glow: Rgb, h: f32, head: [f32; 2], width: f32, segs: usize, at: &dyn Fn(f32) -> [f32; 2]) {
+        use std::f32::consts::TAU;
+        let e = self.excite;
+        let [hx, hy] = head;
+        let base = at(0.0)[1].max(hy + h);
+        let along = |b: &mut Batch, w: f32, col: [f32; 4]| {
+            let mut prev = at(0.0);
+            for i in 1..=segs {
+                let p = at(i as f32 / segs as f32);
+                b.line(prev, p, w, col);
+                prev = p;
+            }
+        };
+        match el {
+            Element::Natural | Element::Matter => {
+                // A parabola of light standing on the plant, widest at the ground, narrowing to the head.
+                const SLICES: usize = 6;
+                let soft = if el == Element::Matter { 0.8 + 0.2 * (t * 1.3 + self.phase).sin() } else { 1.0 };
+                let half = self.size * 2.4 + 3.0;
+                let top = h + self.size * 1.8;
+                let step = top / SLICES as f32;
+                for k in 0..SLICES {
+                    let f = (k as f32 + 0.5) / SLICES as f32;
+                    let hw = half * (1.0 - f).sqrt();
+                    let y = base - (k as f32 + 0.5) * step;
+                    b.rect(self.x + self.bend * f, y, hw, step * 0.5 + 0.3, 0.0, [glow[0], glow[1], glow[2], 0.075 * e * soft * (1.2 - f)]);
+                }
+                along(b, width + 2.4, [glow[0], glow[1], glow[2], 0.28 * e]);
+                b.disc(hx, hy, self.size * 2.2 + 1.5, [glow[0], glow[1], glow[2], 0.2 * e * soft]);
+                if el == Element::Matter {
+                    // Gold dust drifting round the head.
+                    for k in 0..4 {
+                        let a = t * 1.1 + k as f32 * 1.57 + self.phase;
+                        b.disc(hx + a.cos() * self.size * 1.9, hy + a.sin() * self.size * 1.3, 0.8, [glow[0], glow[1], glow[2], 0.8 * e]);
+                    }
+                }
+            }
+            Element::Lightning => {
+                // Crackles: the glow flickers hard, jagged arcs run along the stem and spit off the head.
+                let fl = 0.5 + 0.5 * (t * 47.0 + self.phase * 9.0).sin().abs();
+                b.disc(hx, hy, self.size * 2.1 + 1.0, [glow[0], glow[1], glow[2], 0.24 * e * fl]);
+                let mut prev = at(0.0);
+                for i in 1..=segs * 2 {
+                    let mut p = at(i as f32 / (segs * 2) as f32);
+                    p[0] += if i % 2 == 0 { 1.7 } else { -1.7 } * (0.6 + fl);
+                    b.line(prev, p, 0.9, [glow[0], glow[1], glow[2], 0.85 * e * fl]);
+                    prev = p;
+                }
+                for k in 0..4 {
+                    let a = (t * 9.0 + k as f32 * 1.6 + self.phase).floor() * 2.399 + k as f32;
+                    let len = self.size * (1.2 + 1.1 * ((t * 31.0 + k as f32).sin().abs()));
+                    b.line([hx, hy], [hx + a.cos() * len, hy + a.sin() * len], 0.8, [1.0, 0.95, 1.0, 0.8 * e * fl]);
+                }
+            }
+            Element::Fire => {
+                // A lick of flame standing over the head, flickering upward; the stem glows warm.
+                let fl = (t * 11.0 + self.phase).sin();
+                b.ellipse(hx + fl * 0.6, hy - self.size * 0.9, self.size * 1.2, self.size * 2.2, fl * 0.06, [glow[0], glow[1], glow[2], 0.2 * e]);
+                b.ellipse(hx + fl * 0.4, hy - self.size * 0.7, self.size * 0.7, self.size * 1.5, 0.0, [1.0, 0.8, 0.3, 0.25 * e]);
+                along(b, width + 2.0, [glow[0], glow[1], glow[2], 0.2 * e]);
+            }
+            Element::Ice => {
+                // Crisp pale rings and glints that twinkle, a frosted stem.
+                b.disc(hx, hy, self.size * 1.9, [glow[0], glow[1], glow[2], 0.14 * e]);
+                b.disc(hx, hy, self.size * 1.3, [glow[0], glow[1], glow[2], 0.18 * e]);
+                along(b, width + 1.6, [0.85, 0.97, 1.0, 0.35 * e]);
+                for k in 0..4 {
+                    let tw = (t * 6.0 + self.phase + k as f32 * 1.7).sin();
+                    if tw > 0.2 {
+                        let a = self.phase * 3.0 + k as f32 * 1.57;
+                        let (px, py) = (hx + a.cos() * self.size * 2.1, hy + a.sin() * self.size * 2.1);
+                        let l = self.size * 0.55;
+                        b.line([px - l, py], [px + l, py], 0.7, [1.0, 1.0, 1.0, tw * e]);
+                        b.line([px, py - l], [px, py + l], 0.7, [1.0, 1.0, 1.0, tw * e]);
+                    }
+                }
+            }
+            Element::Void => {
+                // The opposite of light: a dark halo around the head ringed by a bright, slowly turning rim.
+                b.disc(hx, hy, self.size * 2.4, [0.02, 0.0, 0.08, 0.5 * e]);
+                for k in 0..10 {
+                    let a = t * 1.6 + k as f32 * TAU / 10.0 + self.phase;
+                    b.disc(hx + a.cos() * self.size * 2.2, hy + a.sin() * self.size * 2.2, 0.8, [glow[0], glow[1], glow[2], 0.9 * e]);
+                }
+                along(b, width + 2.0, [0.02, 0.0, 0.08, 0.4 * e]);
+            }
+        }
+    }
+
     /// The head of a flower made of an element, with its own life (flicker, orbiting motes, twinkling).
     fn element_head(&self, b: &mut Batch, hx: f32, hy: f32, s: f32, el: Element, t: f32, _glow: Rgb) {
         use std::f32::consts::TAU;
@@ -754,27 +847,9 @@ impl Flower {
         // One art pixel wide in the pixel renderer, a fine line otherwise.
         let width = if pixel_size > 0.0 { pixel_size } else { 1.3 };
         let segs = if h < 10.0 && el != Element::Fire { 2 } else { 4 };
-        // Light given off by the plant being played with: a parabola of light standing on it (widest at the
-        // ground, narrowing to the head), a halo along the stem and one around the head.
+        // What the plant being played with gives off, in the manner of its element.
         if self.excite > 0.03 {
-            const SLICES: usize = 6;
-            let half = self.size * 2.4 + 3.0;
-            let top = h + self.size * 1.8;
-            let step = top / SLICES as f32;
-            for k in 0..SLICES {
-                let t = (k as f32 + 0.5) / SLICES as f32;
-                let hw = half * (1.0 - t).sqrt();
-                let y = base - (k as f32 + 0.5) * step;
-                b.rect(self.x + self.bend * t, y, hw, step * 0.5 + 0.3, 0.0, [glow[0], glow[1], glow[2], 0.075 * self.excite * (1.2 - t)]);
-            }
-            let gcol = [glow[0], glow[1], glow[2], 0.28 * self.excite];
-            let mut prev = at(0.0);
-            for i in 1..=segs {
-                let p = at(i as f32 / segs as f32);
-                b.line(prev, p, width + 2.4, gcol);
-                prev = p;
-            }
-            b.disc(head[0], head[1], self.size * 2.2 + 1.5, [glow[0], glow[1], glow[2], 0.2 * self.excite]);
+            self.glow(b, el, t, glow, h, head, width, segs, &at);
         }
         let mut prev = at(0.0);
         for i in 1..=segs {
