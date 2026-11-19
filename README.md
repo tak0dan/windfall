@@ -164,15 +164,19 @@ git clone https://github.com/tak0dan/windfall && cd windfall/packaging
 makepkg -si
 ```
 
-The package installs `windfalld` (the overlay), `windfallctl`, `windfall-gui` (the controller), a desktop entry
-(**Windfall Controller**), the icon and a systemd user unit, and **starts with your Hyprland session** (it enables the
-user unit globally and adds an XDG autostart entry). Start it right away with `windfalld &`. If your session does not
-start systemd user units or XDG autostart, add one line to your Hyprland config:
+Windfall is an **app**, not a service. The package installs the app `windfall` (a menu entry called **Windfall**:
+it starts in the tray, and launching it again opens the controller), the controller `windfall-gui` (also in the
+menu as **Windfall Controller**), the command-line tool `windfallctl`, and the icon. It **starts with your Hyprland
+session** through an XDG autostart entry (uwsm and dex honour it). Launch it right away from your application menu or
+with `windfall &`. If your session does not run XDG autostart, add one line to your Hyprland config:
 
 ```
-exec-once = windfalld                     # hyprland.conf
-hl.exec_cmd("windfalld")                  -- hyprland.lua
+exec-once = windfall                      # hyprland.conf
+hl.exec_cmd("windfall")                   -- hyprland.lua
 ```
+
+If your bar starts after Windfall, nothing to do: the tray icon appears as soon as the bar's tray is there.
+(`windfalld` is the same program under its old name.)
 
 Needs Hyprland (or another compositor with `wlr-layer-shell` and `wlr-screencopy`), OpenGL ES (Mesa), GTK4 and libadwaita.
 

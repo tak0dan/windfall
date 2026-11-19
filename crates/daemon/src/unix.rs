@@ -195,11 +195,11 @@ impl App {
                 if self.gpu.is_none() {
                     match gpu::Gpu::new(self.conn.backend().display_ptr() as *mut _) {
                         Ok(g) => {
-                            eprintln!("windfalld: GPU {}", g.renderer);
+                            eprintln!("windfall: GPU {}", g.renderer);
                             self.gpu = Some(g);
                         }
                         Err(e) => {
-                            eprintln!("windfalld: no GPU: {e}");
+                            eprintln!("windfall: no GPU: {e}");
                             return;
                         }
                     }
@@ -207,7 +207,7 @@ impl App {
                 let g = self.gpu.as_ref().unwrap();
                 match g.create_surface(ov.egl_win.as_ref().unwrap().ptr() as *mut _) {
                     Ok(t) => ov.target = Some(t),
-                    Err(e) => eprintln!("windfalld: {e}"),
+                    Err(e) => eprintln!("windfall: {e}"),
                 }
             }
         }
@@ -264,7 +264,7 @@ impl App {
                 clear: m.name.as_ref().and_then(|n| self.bare.get(n)).map(|v| v.iter().map(|r| [(r[0] as f32 * scale) as i32, (r[1] as f32 * scale) as i32, (r[2] as f32 * scale).ceil() as i32, (r[3] as f32 * scale).ceil() as i32]).collect()).unwrap_or_default(),
             };
             if self.debug && now.duration_since(self.debug_at).as_secs() >= 2 {
-                eprintln!("windfalld: {} parts={} verts={} mass={:.0} buf={:?}", m.name.as_deref().unwrap_or("?"), m.world.particle_count(), self.batch.vertex_count(), m.world.pile_mass(), buf);
+                eprintln!("windfall: {} parts={} verts={} mass={:.0} buf={:?}", m.name.as_deref().unwrap_or("?"), m.world.particle_count(), self.batch.vertex_count(), m.world.pile_mass(), buf);
             }
             g.draw(target, &self.batch.data, &opts);
         }
@@ -383,6 +383,12 @@ impl App {
 
     fn handle(&mut self, msg: Msg) {
         match msg {
+            Msg::TrayReady(handle) => {
+                // Show the current settings in the menu straight away.
+                let cfg = self.config.clone();
+                handle.update(move |tr| tr.config = cfg);
+                self.tray = Some(handle);
+            }
             Msg::Snapshot(snap) => {
                 let mut names = Vec::new();
                 for ms in snap.monitors {
@@ -404,7 +410,7 @@ impl App {
             }
             Msg::Mask { id, segs } => {
                 if self.debug {
-                    eprintln!("windfalld: layer {id:x} -> {:?}", segs.as_ref().map(|v| v.iter().map(|g| (g.x0 as i32, g.x1 as i32, g.top as i32)).collect::<Vec<_>>()));
+                    eprintln!("windfall: layer {id:x} -> {:?}", segs.as_ref().map(|v| v.iter().map(|g| (g.x0 as i32, g.x1 as i32, g.top as i32)).collect::<Vec<_>>()));
                 }
                 self.masks.insert(id, segs);
                 let names: Vec<String> = self.scenes.keys().cloned().collect();
@@ -533,18 +539,18 @@ delegate_noop!(App: ignore WpFractionalScaleManagerV1);
 
 pub fn main() {
     if !hypr::available() {
-        eprintln!("windfalld: Hyprland's IPC socket was not found; run this inside a Hyprland session.");
+        eprintln!("windfall: Hyprland's IPC socket was not found; run this inside a Hyprland session.");
         std::process::exit(1);
     }
     let conn = Connection::connect_to_env().unwrap_or_else(|e| {
-        eprintln!("windfalld: cannot connect to Wayland: {e}");
+        eprintln!("windfall: cannot connect to Wayland: {e}");
         std::process::exit(1);
     });
     let (globals, queue) = registry_queue_init::<App>(&conn).expect("registry");
     let qh = queue.handle();
     let compositor = globals.bind::<wl_compositor::WlCompositor, _, _>(&qh, 4..=6, ()).expect("wl_compositor");
     let layer_shell = globals.bind::<ZwlrLayerShellV1, _, _>(&qh, 1..=4, ()).unwrap_or_else(|_| {
-        eprintln!("windfalld: the compositor has no wlr-layer-shell");
+        eprintln!("windfall: the compositor has no wlr-layer-shell");
         std::process::exit(1);
     });
     let viewporter = globals.bind::<WpViewporter, _, _>(&qh, 1..=1, ()).ok();
@@ -555,10 +561,17 @@ pub fn main() {
     let (tx, rx) = calloop::channel::channel::<Msg>();
     if let Err(e) = server::start(tx.clone()) {
         if e.kind() == std::io::ErrorKind::AddrInUse {
-            eprintln!("windfalld is already running.");
-        } else {
-            eprintln!("windfalld: control socket: {e}");
+            // Already running. Started by hand (or from the app menu) it just opens the controller.
+            let args: Vec<String> = std::env::args().collect();
+            let as_app = args.first().and_then(|a| std::path::Path::new(a).file_name()).is_some_and(|n| n == "windfall") || args.iter().any(|a| a == "--controller");
+            if as_app {
+                let _ = std::process::Command::new("windfall-gui").stdin(std::process::Stdio::null()).spawn();
+            } else {
+                eprintln!("Windfall is already running.");
+            }
+            return;
         }
+        eprintln!("windfall: control socket: {e}");
         std::process::exit(1);
     }
     let awake = Arc::new(AtomicBool::new(true));
@@ -566,16 +579,36 @@ pub fn main() {
     hypr::spawn(move |s| hypr_tx.send(Msg::Snapshot(s)).is_ok(), awake.clone());
 
     let config = Config::load();
-    let tray = {
-        use ksni::blocking::TrayMethods;
-        match (tray::Tray { config: config.clone(), tx: tx.clone() }).spawn() {
-            Ok(h) => Some(h),
-            Err(e) => {
-                eprintln!("windfalld: no tray ({e}); is a StatusNotifier host running?");
-                None
-            }
-        }
-    };
+    // The tray icon. At login this daemon often starts before the bar (the StatusNotifier watcher) exists, so it
+    // must not give up: the service waits for the watcher to appear and registers then, and if even starting
+    // the service fails (no session bus yet, say) it is tried again every few seconds.
+    {
+        let (tx, config) = (tx.clone(), config.clone());
+        std::thread::Builder::new()
+            .name("tray".into())
+            .spawn(move || {
+                use ksni::blocking::TrayMethods;
+                let mut attempt = 0u32;
+                loop {
+                    match (tray::Tray { config: config.clone(), tx: tx.clone() }).assume_sni_available(true).spawn() {
+                        Ok(handle) => {
+                            eprintln!("windfall: tray ready");
+                            let _ = tx.send(Msg::TrayReady(handle));
+                            return;
+                        }
+                        Err(e) => {
+                            attempt += 1;
+                            if attempt == 1 || attempt % 20 == 0 {
+                                eprintln!("windfall: no tray yet ({e}); trying again");
+                            }
+                            std::thread::sleep(Duration::from_secs(3));
+                        }
+                    }
+                }
+            })
+            .expect("spawn tray thread");
+    }
+    let tray = None;
 
     let mut app = App {
         qh: qh.clone(),

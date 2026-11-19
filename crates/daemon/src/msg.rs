@@ -12,6 +12,8 @@ pub enum Msg {
     Toggle,
     Clear,
     OpenGui,
+    /// The tray service is up (it may take a while at login, until the bar is there).
+    TrayReady(ksni::blocking::Handle<crate::tray::Tray>),
     Quit,
     /// Blank (or restore) a monitor's overlay so a bar can be photographed without our own drawing on it.
     Hide { monitor: String, bands: Vec<[i32; 4]> },

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Windfall
+GenericName=Desktop weather
+Comment=Snow, leaves, blossom, rain, flowers and floating lights on your desktop (starts in the tray; run it again to open the controller)
+Exec=windfall
+Icon=windfall
+Terminal=false
+Categories=Utility;GTK;
+Keywords=snow;weather;rain;flowers;overlay;effect;
+StartupNotify=false

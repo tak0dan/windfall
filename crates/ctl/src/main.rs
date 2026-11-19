@@ -121,5 +121,5 @@ fn run(args: &[String]) -> Result<(), String> {
 }
 
 fn not_running(e: std::io::Error) -> String {
-    format!("cannot reach windfalld ({e}); is it running? Try: systemctl --user start windfall")
+    format!("cannot reach Windfall ({e}); is Windfall running? Start it from your application menu, or run: windfall")
 }
