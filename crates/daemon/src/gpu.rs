@@ -39,10 +39,12 @@ uniform sampler2D u_tex; uniform vec2 u_buf; uniform vec2 u_texsize; uniform flo
 void main() {
     vec2 uv = vec2(gl_FragCoord.x / u_texsize.x, 1.0 - (u_buf.y - gl_FragCoord.y) / u_texsize.y);
     vec4 t = texture2D(u_tex, uv);
-    if (t.a < 0.4) { gl_FragColor = vec4(0.0); return; }
+    if (t.a < 0.08) { gl_FragColor = vec4(0.0); return; }
     vec3 c = clamp(t.rgb / t.a, 0.0, 1.0);
     c = floor(c * u_levels + 0.5) / u_levels;
-    gl_FragColor = vec4(c * u_opacity, u_opacity);
+    // Pixel art keeps a few steps of transparency (a quarter, half, three quarters, solid): soft rims stay see-through.
+    float a = max(floor(t.a * 4.0 + 0.5) / 4.0, 0.25) * u_opacity;
+    gl_FragColor = vec4(c * a, a);
 }";
 
 pub struct Fbo {

@@ -49,6 +49,13 @@ scale slider {{ background: {fg}; }}
         border = hex(t.border),
         hov = hov,
     );
+    s.push_str(
+        "scale.hue trough { background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000); min-height: 12px; }
+scale.hue highlight { background: transparent; }
+scale.hue slider { background: #ffffff; border: 2px solid #00000080; }
+.sv-square { border-radius: 6px; }
+",
+    );
     if pixel {
         s.push_str(&format!(
             "* {{ border-radius: 0; font-family: \"Press Start 2P\", \"Pixelify Sans\", \"Silkscreen\", \"JetBrains Mono\", monospace; font-weight: bold; }}

@@ -4,7 +4,7 @@ use windfall_core::geom::Rect;
 use windfall_core::sim::*;
 
 fn params(effect: Effect) -> Params {
-    Params { effect, intensity: 1.0, melt: false, interact: true, wind: 0.0, ground: true, windows: true, layers: true, pixel: false, pixel_size: 0.0, glow: [1.0, 0.85, 0.3], element: windfall_core::config::Element::Natural, lights: false }
+    Params { effect, intensity: 1.0, melt: false, interact: true, wind: 0.0, ground: true, windows: true, layers: true, pixel: false, pixel_size: 0.0, glow: [1.0, 0.85, 0.3], element: windfall_core::config::Element::Natural, lights: false, lights_color: [1.0, 0.85, 0.3], hearts: [1.0, 0.45, 0.65], comet: [0.4, 0.66, 1.0], flower_tint: None }
 }
 
 fn scene(cursor: Option<[f32; 2]>) -> Scene {
@@ -353,7 +353,7 @@ fn hearts_fall_and_burst_pink() {
 fn warm_lights_drift_and_stay_in_the_air() {
     let mut w = World::new(53);
     w.set_scene(scene(None));
-    let p = Params { intensity: 1.0, ..params(Effect::Lights) };
+    let p = Params { intensity: 1.0, lights: true, ..params(Effect::Off) };
     for _ in 0..(30 * 60) {
         w.step(1.0 / 60.0, &p);
     }
@@ -398,8 +398,77 @@ fn floating_lights_overlay_any_effect_in_its_colours_and_are_yellow_alone() {
     let snow_on = run_with(Effect::Snow, true);
     assert!(snow_on.vertex_count() > snow_off.vertex_count() + 60, "no lights over the snow");
     assert!(blueish(&snow_on) > blueish(&snow_off), "lights over snow should be icy");
-    let alone = run_with(Effect::Lights, false);
+    let alone = run_with(Effect::Off, true);
     assert!(yellowish(&alone) > 20, "lights on their own are yellow");
     let leaves = run_with(Effect::Leaves, true);
     assert!(yellowish(&leaves) > 20, "lights over leaves should be amber");
+}
+
+#[test]
+fn off_draws_nothing_and_lights_alone_use_the_chosen_colour() {
+    let mut w = World::new(80);
+    w.set_scene(scene(None));
+    let off = params(Effect::Off);
+    for _ in 0..(30 * 60) {
+        w.step(1.0 / 60.0, &off);
+    }
+    let mut b = Batch::default();
+    w.draw(&mut b, &off);
+    assert_eq!(b.vertex_count(), 0, "Off must draw nothing");
+    // Lights over Off take the colour that was picked.
+    let green = Params { lights: true, lights_color: [0.2, 0.9, 0.3], ..params(Effect::Off) };
+    for _ in 0..(40 * 60) {
+        w.step(1.0 / 60.0, &green);
+    }
+    b.clear();
+    w.draw(&mut b, &green);
+    let n = b.data.chunks(8).filter(|v| v[7] > 0.0 && v[5] > v[4] + 0.3 && v[5] > v[6] + 0.3).count();
+    assert!(n > 20, "the picked colour is not used: {n}");
+}
+
+#[test]
+fn hearts_comets_and_flowers_follow_their_chosen_colours() {
+    let mut w = World::new(81);
+    w.set_scene(scene(None));
+    let hearts = Params { hearts: [0.1, 0.8, 0.2], intensity: 1.0, ..params(Effect::Hearts) };
+    let mut b = Batch::default();
+    let mut green = 0;
+    for _ in 0..(20 * 60) {
+        w.step(1.0 / 60.0, &hearts);
+        b.clear();
+        w.draw(&mut b, &hearts);
+        green = green.max(b.data.chunks(8).filter(|v| v[7] > 0.5 && v[5] > v[4] + 0.3 && v[5] > v[6] + 0.3).count());
+    }
+    assert!(green > 12, "hearts are not green: {green}");
+    // Flowers in one chosen colour (random shapes): petals are shades of it.
+    let mut w = World::new(82);
+    w.set_scene(scene(None));
+    let flowers = Params { flower_tint: Some([0.9, 0.1, 0.1]), ..params(Effect::Flowers) };
+    for _ in 0..(25 * 60) {
+        w.step(1.0 / 60.0, &flowers);
+    }
+    b.clear();
+    w.draw(&mut b, &flowers);
+    let reddish = b.data.chunks(8).filter(|v| v[7] > 0.9 && v[4] > 0.5 && v[4] > v[5] * 2.0 && v[4] > v[6] * 2.0).count();
+    let blueish = b.data.chunks(8).filter(|v| v[7] > 0.9 && v[6] > v[4] + 0.3 && v[6] > v[5] + 0.3).count();
+    assert!(reddish > 60 && blueish == 0, "red {reddish}, blue {blueish}");
+}
+
+#[test]
+fn comets_are_frequent_at_full_intensity() {
+    let mut w = World::new(83);
+    w.set_scene(scene(None));
+    let p = Params { intensity: 1.0, ..params(Effect::Comets) };
+    let mut seen = 0usize;
+    let mut prev = 0usize;
+    for _ in 0..(30 * 60) {
+        w.step(1.0 / 60.0, &p);
+        let n = w.particle_count();
+        if n > prev {
+            seen += n - prev;
+        }
+        prev = n;
+    }
+    // Around 4.5 a second at full intensity over 30 seconds: well over 100 shooting stars.
+    assert!(seen > 100, "only {seen} comets in 30 s");
 }

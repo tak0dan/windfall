@@ -397,6 +397,10 @@ fn params(c: &Config) -> Params {
         glow: windfall_core::config::glow_for(c),
         element: c.element,
         lights: c.lights,
+        lights_color: windfall_core::config::colors_of(c).0,
+        hearts: windfall_core::config::colors_of(c).1,
+        comet: windfall_core::config::colors_of(c).2,
+        flower_tint: windfall_core::config::colors_of(c).3,
     }
 }
 
@@ -405,7 +409,7 @@ fn tick(app: &mut App) {
     let now = Instant::now();
     let dt = now.duration_since(app.last).as_secs_f32();
     app.last = now;
-    if now.duration_since(app.scene_at) >= Duration::from_millis(33) && app.config.enabled {
+    if now.duration_since(app.scene_at) >= Duration::from_millis(33) && app.config.drawing() {
         app.scene_at = now;
         app.scenes = unsafe { read_scenes() }.into_iter().map(|(_, s, f)| (s, f)).collect::<Vec<_>>();
     }
@@ -423,7 +427,7 @@ fn tick(app: &mut App) {
         SetTimer(app.hwnd, TIMER_FRAME, interval, None);
     }
     for (i, ov) in app.overlays.iter_mut().enumerate() {
-        let want = app.config.enabled && app.scenes.get(i).is_some_and(|(_, fs)| app.config.over_fullscreen || !fs);
+        let want = app.config.drawing() && app.scenes.get(i).is_some_and(|(_, fs)| app.config.over_fullscreen || !fs);
         if !want {
             if ov.shown {
                 unsafe { ShowWindow(ov.hwnd, SW_HIDE) };
@@ -461,18 +465,20 @@ fn present(ov: &mut Overlay, batch: &[f32], c: &Config) {
             let k = 1.0 / c.pixel_size as f32;
             Raster { buf: &mut ov.small, w: sw as i32, h: sh as i32, aa: false, opacity: 1.0 }.batch(batch, k, k);
             let levels = (c.pixel_levels.max(2) - 1) as f32;
-            let al = (c.opacity * 255.0) as u8;
             for y in 0..h {
                 for x in 0..w {
                     let si = ((y / n) * sw + (x / n)) * 4;
                     let o = (y * w + x) * 4;
                     let a = ov.small[si + 3];
-                    if a < 100 {
+                    if a < 20 {
                         dst[o..o + 4].copy_from_slice(&[0, 0, 0, 0]);
                         continue;
                     }
+                    // A few steps of transparency, so soft rims stay see-through.
                     let af = a as f32 / 255.0;
-                    let q = |v: u8| ((((v as f32 / 255.0) / af).clamp(0.0, 1.0) * levels).round() / levels * c.opacity * 255.0) as u8;
+                    let aq = ((af * 4.0 + 0.5).floor() / 4.0).max(0.25) * c.opacity;
+                    let q = |v: u8| ((((v as f32 / 255.0) / af).clamp(0.0, 1.0) * levels).round() / levels * aq * 255.0) as u8;
+                    let al = (aq * 255.0) as u8;
                     dst[o] = q(ov.small[si]);
                     dst[o + 1] = q(ov.small[si + 1]);
                     dst[o + 2] = q(ov.small[si + 2]);

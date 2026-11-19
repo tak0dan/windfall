@@ -63,6 +63,14 @@ pub struct Params {
     pub element: crate::config::Element,
     /// Floating lights over the effect, in its colours.
     pub lights: bool,
+    /// Colour of the lights when nothing else is on.
+    pub lights_color: Rgb,
+    /// Colour of the hearts.
+    pub hearts: Rgb,
+    /// Colour of the shooting stars.
+    pub comet: Rgb,
+    /// All flowers in this colour (random shapes), when set.
+    pub flower_tint: Option<Rgb>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -131,6 +139,7 @@ pub struct World {
     cursor_speed: f32,
     effect: Effect,
     element: crate::config::Element,
+    tint: Option<Rgb>,
 }
 
 const MAX_PARTS: usize = 6000;
@@ -153,6 +162,7 @@ impl World {
             cursor_speed: 0.0,
             effect: Effect::Snow,
             element: crate::config::Element::Natural,
+            tint: None,
         }
     }
 
@@ -361,8 +371,9 @@ impl World {
     pub fn step(&mut self, dt: f32, p: &Params) {
         let dt = dt.clamp(0.0, 0.05);
         self.time += dt;
-        if p.element != self.element {
+        if p.element != self.element || p.flower_tint != self.tint {
             self.element = p.element;
+            self.tint = p.flower_tint;
             // The flowers are made of something else now: replant.
             self.flowers.clear();
             self.orphans.clear();
@@ -407,12 +418,12 @@ impl World {
 
     /// Soft circles of light, alone (yellow) or over any effect (in its colours).
     fn spawn_orbs(&mut self, dt: f32, p: &Params) {
-        if !(p.lights || p.effect == Effect::Lights) {
+        if !p.lights {
             return;
         }
         let (w, h) = (self.scene.w, self.scene.h);
         self.orb_acc += 2.0 * (0.5 + 0.5 * p.intensity) * (w / 1920.0).max(0.3) * dt;
-        let colors = palette::orb_colors(p.effect, p.element).len();
+        let colors = orb_palette(p).len();
         while self.orb_acc >= 1.0 {
             self.orb_acc -= 1.0;
             if self.parts.iter().filter(|q| q.kind == Kind::Orb).count() >= 40 {
@@ -432,8 +443,8 @@ impl World {
             Effect::Blossom => 22.0,
             Effect::Rain => 420.0,
             Effect::Flowers => 0.0,
-            Effect::Comets => 1.6,
-            Effect::Lights => 0.0, // the lights have their own spawner below
+            Effect::Comets => 4.5,
+            Effect::Off | Effect::Lights => 0.0, // the lights have their own spawner below
             Effect::Hearts => 9.0,
         } * p.intensity
             * (self.scene.w / 1920.0).max(if p.effect == Effect::Comets { 0.9 } else { 0.3 })
@@ -570,7 +581,7 @@ impl World {
             if let Some((_, top)) = best {
                 if matches!(q.kind, Kind::Comet | Kind::Heart) {
                     // A shooting star (or a heart) bursts into sparks on whatever it meets.
-                    let (col, n, v) = if q.kind == Kind::Comet { ([0.4, 0.66, 1.0], 22, 130.0) } else { ([1.0, 0.45, 0.65], 9, 70.0) };
+                    let (col, n, v) = if q.kind == Kind::Comet { (p.comet, 22, 130.0) } else { (p.hearts, 9, 70.0) };
                     for _ in 0..n {
                         let a = self.rng.range(std::f32::consts::PI, std::f32::consts::TAU);
                         let sp = self.rng.range(0.3, 1.0) * v;
@@ -673,11 +684,11 @@ impl World {
                 continue;
             }
             let hidden_at = |x: f32| s.kind != SurfKind::Ground && self.scene.surfs.iter().any(|o| o.id != s.id && o.shown && o.z > s.z && o.rect.contains(x, s.rect.y + 2.0));
-            let bed = self.flowers.entry(s.id).or_insert_with(|| flowers::Bed::new(s, p.element, &mut self.rng));
-            puffs.extend(bed.step(dt, p.intensity, p.element, cursor, &mut self.rng, &hidden_at));
+            let bed = self.flowers.entry(s.id).or_insert_with(|| flowers::Bed::new(s, p.element, p.flower_tint, &mut self.rng));
+            puffs.extend(bed.step(dt, p.intensity, p.element, p.flower_tint, cursor, &mut self.rng, &hidden_at));
         }
         for bed in &mut self.orphans {
-            puffs.extend(bed.step(dt, p.intensity, p.element, None, &mut self.rng, &|_| false));
+            puffs.extend(bed.step(dt, p.intensity, p.element, p.flower_tint, None, &mut self.rng, &|_| false));
         }
         self.orphans.retain(|b| !b.is_empty());
         for h in puffs.into_iter().take(400) {
@@ -697,7 +708,7 @@ impl World {
     pub fn draw(&self, b: &mut Batch, p: &Params) {
         let colors = flake_colors(p.effect);
         // Floating lights glow behind everything else.
-        let orbs = palette::orb_colors(p.effect, p.element);
+        let orbs = orb_palette(p);
         for q in self.parts.iter().filter(|q| q.kind == Kind::Orb) {
             let c = orbs[(q.col as usize) % orbs.len()];
             let age = q.mass - q.life;
@@ -707,10 +718,12 @@ impl World {
             if a < 0.005 {
                 continue;
             }
-            // A soft round glow made of a few rings, brighter toward the middle (stepped when pixel art).
-            for (k, (rs, al)) in [(1.0f32, 0.5f32), (0.82, 0.7), (0.6, 0.85), (0.36, 1.0)].iter().enumerate() {
-                let _ = k;
-                b.disc(q.x, q.y, q.size * rs, [c[0], c[1], c[2], (a * al * 0.7).min(0.5)]);
+            // A soft round glow made of a few rings, brighter toward the middle. In pixel art the rings are
+            // stepped and the outer rim stays semi-transparent (about a quarter), the middle denser.
+            let rings: [(f32, f32); 4] = if p.pixel { [(1.0, 0.26), (0.78, 0.30), (0.56, 0.34), (0.34, 0.40)] } else { [(1.0, 0.5), (0.82, 0.7), (0.6, 0.85), (0.36, 1.0)] };
+            for (rs, al) in rings {
+                let alpha = if p.pixel { al * (0.9 + 0.1 * fade * pulse) * fade } else { (a * al * 0.7).min(0.5) };
+                b.disc(q.x, q.y, q.size * rs, [c[0], c[1], c[2], alpha]);
             }
         }
         // Flowers and piles first, falling things over them.
@@ -731,8 +744,9 @@ impl World {
         for pf in &self.puffs {
             b.disc(pf.x, pf.y, if p.pixel_size > 0.0 { p.pixel_size * 0.6 } else { 1.1 }, [pf.col[0], pf.col[1], pf.col[2], (pf.life * 2.5).clamp(0.0, 1.0) * 0.85]);
         }
+        let heart_cols = palette::shades(p.hearts);
         for q in &self.parts {
-            let c = colors[(q.col as usize) % colors.len()];
+            let c = if q.kind == Kind::Heart { heart_cols[(q.col as usize) % heart_cols.len()] } else { colors[(q.col as usize) % colors.len()] };
             match q.kind {
                 Kind::Orb => {}
                 Kind::Comet => {
@@ -746,11 +760,13 @@ impl World {
                         let t = k as f32 / n as f32;
                         let next = [q.x + dx * len * t, q.y + dy * len * t];
                         let w = (q.size * 2.3) * (1.0 - t * 0.85);
-                        b.line(prev, next, if p.pixel_size > 0.0 { w.max(p.pixel_size) } else { w }, [0.62 + 0.3 * (1.0 - t), 0.82 + 0.15 * (1.0 - t), 1.0, 0.85 * (1.0 - t).powf(1.4)]);
+                        let tc = palette::mix(p.comet, [1.0, 1.0, 1.0], 0.55 * (1.0 - t));
+                        b.line(prev, next, if p.pixel_size > 0.0 { w.max(p.pixel_size) } else { w }, [tc[0], tc[1], tc[2], 0.85 * (1.0 - t).powf(1.4)]);
                         prev = next;
                     }
-                    b.disc(q.x, q.y, q.size * 3.0, [0.6, 0.8, 1.0, 0.28]);
-                    b.disc(q.x, q.y, q.size * 1.7, [0.8, 0.9, 1.0, 0.5]);
+                    b.disc(q.x, q.y, q.size * 3.0, [p.comet[0], p.comet[1], p.comet[2], 0.28]);
+                    let hc = palette::mix(p.comet, [1.0, 1.0, 1.0], 0.5);
+                    b.disc(q.x, q.y, q.size * 1.7, [hc[0], hc[1], hc[2], 0.5]);
                     b.disc(q.x, q.y, q.size * 1.15, [1.0, 1.0, 1.0, 1.0]);
                 }
                 Kind::Heart => {
@@ -776,7 +792,7 @@ impl World {
 
 pub fn flake_colors(e: Effect) -> &'static [Rgb] {
     match e {
-        Effect::Snow => palette::SNOW,
+        Effect::Off | Effect::Snow => palette::SNOW,
         Effect::Leaves => palette::LEAVES,
         Effect::Blossom => palette::BLOSSOM,
         Effect::Rain => palette::RAIN,
@@ -784,5 +800,20 @@ pub fn flake_colors(e: Effect) -> &'static [Rgb] {
         Effect::Comets => palette::COMETS,
         Effect::Lights => palette::LIGHTS,
         Effect::Hearts => palette::HEARTS,
+    }
+}
+
+/// The colours of the floating lights right now: the chosen one when nothing else is on, otherwise those of the
+/// effect (the chosen colours for hearts, shooting stars and single-colour flowers).
+pub fn orb_palette(p: &Params) -> Vec<Rgb> {
+    match p.effect {
+        Effect::Off | Effect::Lights => palette::shades(p.lights_color),
+        Effect::Hearts => palette::shades(p.hearts),
+        Effect::Comets => palette::shades(p.comet),
+        Effect::Flowers => match p.flower_tint {
+            Some(t) => palette::shades(t),
+            None => palette::orb_colors(p.effect, p.element).to_vec(),
+        },
+        _ => palette::orb_colors(p.effect, p.element).to_vec(),
     }
 }

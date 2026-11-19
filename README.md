@@ -34,7 +34,8 @@ way: the overlay is click-through, light, and pauses behind fullscreen apps. It 
 
 ## Effects
 
-Eight effects. Pick one in the controller, from the tray menu, or with `windfallctl effect <name>`.
+Seven effects and **Off**. Pick one in the controller, from the tray menu, or with `windfallctl effect <name>`. **Off** draws
+nothing: the app idles in the tray (no overlay, no polling), and the lights below can still be on.
 
 ### Weather that piles up
 
@@ -63,21 +64,30 @@ the grass further, rooted on the curve itself.
 
 | | |
 |---|---|
-| ![Shooting stars](docs/screens/comets.jpg) **Shooting stars** burst into blue sparks on whatever they hit | ![Warm lights](docs/screens/lights.jpg) **Warm lights**: slow, glowing, anime-style circles of light |
-| ![Falling hearts](docs/screens/hearts.jpg) **Falling hearts** pop into pink sparks | |
+| ![Shooting stars](docs/screens/comets.jpg) **Shooting stars** (frequent at 100%) burst into sparks on whatever they hit; pick their colour | ![Falling hearts](docs/screens/hearts.jpg) **Falling hearts** pop into sparks of their own colour; pick it |
 
-### Floating lights: a toggle for every effect
+### Floating lights: a toggle on every mode
 
-*Warm lights* is also a **switch** that works on top of any effect (**Floating lights** in the controller and the
-tray, or `windfallctl lights on|off`). On their own the circles are warm yellow; over another effect they **take its
-colours**: icy blue-white over snow, amber over leaves, pink over blossom and hearts, blue over rain and comets, and
-over the flowers the colour of their element (golden for natural ones, violet for lightning, orange for fire, and so
-on). Change the effect and the lights change colour with it.
+Right under the mode buttons there is a **Floating lights** toggle (also in the tray, and `windfallctl lights on|off`).
+It is not a mode: it works on top of **any** mode, **Off** included. Soft, slow, glowing circles of light drift by,
+and they **take the colours of the mode that is on**: icy blue-white over snow, amber over leaves, pink over
+blossom, the hearts' own colour over hearts, the shooting stars' colour over comets, the chosen colour over
+single-colour flowers and the element's colour over elemental ones. With the mode **Off** the lights have a colour
+you pick yourself (warm yellow by default). In pixel-art mode the rim of each light is semi-transparent.
 
 | | |
 |---|---|
 | ![Lights over snow](docs/screens/lights-snow.jpg) **Snow**: icy | ![Lights over blossom](docs/screens/lights-blossom.jpg) **Blossom**: pink |
-| ![Lights over hearts](docs/screens/lights-hearts.jpg) **Hearts**: rose | ![Lights alone](docs/screens/lights-alone.jpg) **Alone**: warm yellow |
+| ![Lights over hearts](docs/screens/lights-hearts.jpg) **Hearts**: rose | ![Lights with the mode Off](docs/screens/lights-alone.jpg) **Off**: your colour (yellow by default) |
+
+### Colours
+
+Hearts, shooting stars, the lights (while the mode is Off) and the flowers have colour pickers in the controller, built
+like the ones in painting apps: a square for saturation and brightness, a rainbow hue slider and a hex field.
+Flowers also get a **One colour for all flowers** switch: the shapes stay random, every flower is a shade of the colour
+you pick. From the command line: `windfallctl color hearts "#ff7399"` (hearts, comets, lights, flowers).
+
+![The controller's colour picker](docs/screens/controller-picker.jpg)
 
 ## Flower elements
 
@@ -185,9 +195,10 @@ Needs Hyprland (or another compositor with `wlr-layer-shell` and `wlr-screencopy
 ```sh
 windfallctl status                    # what is running
 windfallctl on | off | toggle         # show / hide (remembered between sessions)
-windfallctl effect flowers            # snow leaves blossom rain flowers comets lights hearts
+windfallctl effect flowers            # off snow leaves blossom rain flowers comets hearts
 windfallctl element fire              # natural lightning fire ice matter void
-windfallctl lights on                 # floating lights over any effect, in its colours (off to stop)
+windfallctl lights on                 # floating lights on top of any mode, Off included (off to stop)
+windfallctl color hearts "#ff7399"    # hearts | comets | lights (mode Off) | flowers (one colour)
 windfallctl renderer pixel            # smooth | pixel
 windfallctl intensity 70              # 0-100
 windfallctl pixel-size 2              # 1-10

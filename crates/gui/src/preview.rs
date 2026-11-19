@@ -89,6 +89,10 @@ fn params(c: &Config) -> Params {
         glow: windfall_core::config::glow_for(c),
         element: c.element,
         lights: c.lights,
+        lights_color: windfall_core::config::colors_of(c).0,
+        hearts: windfall_core::config::colors_of(c).1,
+        comet: windfall_core::config::colors_of(c).2,
+        flower_tint: windfall_core::config::colors_of(c).3,
     }
 }
 
@@ -163,15 +167,17 @@ fn quantize(img: &mut ImageSurface, levels: u32) {
             for x in 0..w {
                 let i = y * stride + x * 4;
                 let a = data[i + 3] as f32 / 255.0;
-                if a < 0.4 {
+                if a < 0.08 {
                     data[i..i + 4].copy_from_slice(&[0, 0, 0, 0]);
                     continue;
                 }
+                // A few steps of transparency, like the real thing: soft rims stay see-through.
+                let aq = ((a * 4.0 + 0.5).floor() / 4.0).max(0.25);
                 for k in 0..3 {
                     let c = (data[i + k] as f32 / 255.0 / a).clamp(0.0, 1.0);
-                    data[i + k] = (((c * l).round() / l) * 255.0) as u8;
+                    data[i + k] = ((((c * l).round() / l) * aq) * 255.0) as u8;
                 }
-                data[i + 3] = 255;
+                data[i + 3] = (aq * 255.0) as u8;
             }
         }
     }

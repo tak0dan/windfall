@@ -4,6 +4,8 @@ use std::path::PathBuf;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Effect {
+    /// Nothing is drawn: the app just runs in the background (the floating lights can still be on).
+    Off,
     #[default]
     Snow,
     Leaves,
@@ -12,16 +14,17 @@ pub enum Effect {
     Flowers,
     /// Shooting stars that burst into blue sparks where they hit something.
     Comets,
-    /// Warm, slow, glowing circles of light drifting by.
+    /// Legacy: the old stand-alone lights effect. Lights are a switch now; this reads as Off with lights on.
     Lights,
     /// Hearts falling like stars, bursting into pink sparks.
     Hearts,
 }
 
 impl Effect {
-    pub const ALL: [Effect; 8] = [Effect::Snow, Effect::Leaves, Effect::Blossom, Effect::Rain, Effect::Flowers, Effect::Comets, Effect::Lights, Effect::Hearts];
+    pub const ALL: [Effect; 8] = [Effect::Off, Effect::Snow, Effect::Leaves, Effect::Blossom, Effect::Rain, Effect::Flowers, Effect::Comets, Effect::Hearts];
     pub fn name(self) -> &'static str {
         match self {
+            Effect::Off => "off",
             Effect::Snow => "snow",
             Effect::Leaves => "leaves",
             Effect::Blossom => "blossom",
@@ -34,6 +37,7 @@ impl Effect {
     }
     pub fn title(self) -> &'static str {
         match self {
+            Effect::Off => "Off",
             Effect::Snow => "Snow",
             Effect::Leaves => "Autumn Leaves",
             Effect::Blossom => "Cherry Blossom",
@@ -45,7 +49,11 @@ impl Effect {
         }
     }
     pub fn parse(s: &str) -> Option<Effect> {
-        Effect::ALL.into_iter().find(|e| e.name() == s.to_ascii_lowercase())
+        let s = s.to_ascii_lowercase();
+        if s == "lights" {
+            return Some(Effect::Lights);
+        }
+        Effect::ALL.into_iter().find(|e| e.name() == s)
     }
     /// Whether what falls piles up on window tops.
     pub fn accumulates(self) -> bool {
@@ -178,8 +186,18 @@ pub struct Config {
     pub layers: bool,
     /// Which part of a bar collects things.
     pub bar_mode: BarMode,
-    /// Soft floating lights over any effect, in that effect's colours (yellow on their own).
+    /// Soft floating lights over any effect (or over Off), in that effect's colours.
     pub lights: bool,
+    /// Colour of the lights when the effect is Off (`#rrggbb`).
+    pub lights_color: String,
+    /// Colour of the hearts.
+    pub hearts_color: String,
+    /// Colour of the shooting stars' tails and their sparks.
+    pub comet_color: String,
+    /// The flowers all take one chosen colour (their shapes stay random).
+    pub flower_single: bool,
+    /// That colour.
+    pub flower_color: String,
     /// Keep drawing above fullscreen windows.
     pub over_fullscreen: bool,
     /// React to the cursor.
@@ -207,6 +225,11 @@ impl Default for Config {
             layers: true,
             bar_mode: BarMode::Visible,
             lights: false,
+            lights_color: "#ffd84d".into(),
+            hearts_color: "#ff7399".into(),
+            comet_color: "#a6d1ff".into(),
+            flower_single: false,
+            flower_color: "#ff7bb0".into(),
             over_fullscreen: false,
             interact: true,
             wind: 0.0,
@@ -222,6 +245,16 @@ impl Config {
         self.pixel_size = self.pixel_size.clamp(1, 10);
         self.pixel_levels = self.pixel_levels.clamp(2, 16);
         self.wind = self.wind.clamp(-1.0, 1.0);
+        if self.effect == Effect::Lights {
+            self.effect = Effect::Off;
+            self.lights = true;
+        }
+        let d = Config::default();
+        for (field, default) in [(&mut self.lights_color, d.lights_color), (&mut self.hearts_color, d.hearts_color), (&mut self.comet_color, d.comet_color), (&mut self.flower_color, d.flower_color)] {
+            if crate::palette::parse_hex(field).is_none() {
+                *field = default;
+            }
+        }
         if crate::palette::parse_hex(&self.glow_color).is_none() {
             self.glow_color = "#ffd84d".into();
         }
@@ -292,6 +325,11 @@ pub struct Patch {
     pub layers: Option<bool>,
     pub bar_mode: Option<BarMode>,
     pub lights: Option<bool>,
+    pub lights_color: Option<String>,
+    pub hearts_color: Option<String>,
+    pub comet_color: Option<String>,
+    pub flower_single: Option<bool>,
+    pub flower_color: Option<String>,
     pub over_fullscreen: Option<bool>,
     pub interact: Option<bool>,
     pub wind: Option<f32>,
@@ -305,8 +343,20 @@ impl Config {
         macro_rules! set {
             ($($f:ident),*) => { $( if let Some(v) = p.$f { self.$f = v; } )* };
         }
-        set!(enabled, effect, element, renderer, intensity, opacity, pixel_size, pixel_levels, melt, ground, windows, layers, bar_mode, lights, over_fullscreen, interact, wind);
+        set!(enabled, effect, element, renderer, intensity, opacity, pixel_size, pixel_levels, melt, ground, windows, layers, bar_mode, lights, flower_single, over_fullscreen, interact, wind);
         self.clamp();
+        for (new, field) in [(&p.lights_color, &mut self.lights_color), (&p.hearts_color, &mut self.hearts_color), (&p.comet_color, &mut self.comet_color), (&p.flower_color, &mut self.flower_color)] {
+            if let Some(c) = new {
+                if crate::palette::parse_hex(c).is_some() {
+                    *field = c.to_ascii_lowercase();
+                }
+            }
+        }
+        if self.effect == Effect::Lights {
+            // The old stand-alone lights effect: now Off with the lights switched on.
+            self.effect = Effect::Off;
+            self.lights = true;
+        }
         if let Some(g) = &p.glow_color {
             if crate::palette::parse_hex(g).is_some() {
                 self.glow_color = g.to_ascii_lowercase();
@@ -326,4 +376,23 @@ pub fn glow_for(c: &Config) -> crate::palette::Rgb {
         }
     }
     picked
+}
+
+impl Config {
+    /// Is anything being drawn at all? Off with no lights means the app idles without an overlay.
+    pub fn drawing(&self) -> bool {
+        self.enabled && (self.effect != Effect::Off || self.lights)
+    }
+}
+
+/// The colours the simulation needs, resolved from the settings: (lights, hearts, comets, single flower colour).
+pub fn colors_of(c: &Config) -> (crate::palette::Rgb, crate::palette::Rgb, crate::palette::Rgb, Option<crate::palette::Rgb>) {
+    let rgb = |s: &str, d: &str| crate::palette::parse_hex(s).or_else(|| crate::palette::parse_hex(d)).unwrap_or([1.0, 1.0, 1.0]);
+    let d = Config::default();
+    (
+        rgb(&c.lights_color, &d.lights_color),
+        rgb(&c.hearts_color, &d.hearts_color),
+        rgb(&c.comet_color, &d.comet_color),
+        c.flower_single.then(|| rgb(&c.flower_color, &d.flower_color)),
+    )
 }

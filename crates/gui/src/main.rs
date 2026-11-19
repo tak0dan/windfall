@@ -1,5 +1,8 @@
+mod colorpicker;
 mod preview;
 mod theme;
+
+use colorpicker::Picker;
 
 use adw::prelude::*;
 use gtk::glib;
@@ -72,14 +75,24 @@ struct Ui {
     pixel_levels: gtk::Scale,
     pixel_group: adw::PreferencesGroup,
     melt: adw::SwitchRow,
-    lights: adw::SwitchRow,
+    lights: gtk::ToggleButton,
     ground: adw::SwitchRow,
     windows: adw::SwitchRow,
     layers: adw::SwitchRow,
     bar_mode: adw::ComboRow,
-    glow_row: adw::ActionRow,
     element_row: adw::ComboRow,
-    glow_button: gtk::ColorDialogButton,
+    colours: adw::PreferencesGroup,
+    glow_row: adw::ExpanderRow,
+    glow_p: Picker,
+    hearts_row: adw::ExpanderRow,
+    hearts_p: Picker,
+    comets_row: adw::ExpanderRow,
+    comets_p: Picker,
+    lights_row: adw::ExpanderRow,
+    lights_p: Picker,
+    flower_single: adw::SwitchRow,
+    flower_row: adw::ExpanderRow,
+    flower_p: Picker,
     interact: adw::SwitchRow,
     over_fs: adw::SwitchRow,
     banner: adw::Banner,
@@ -111,19 +124,29 @@ impl Ui {
         self.pixel_levels.set_value(c.pixel_levels as f64);
         self.pixel_group.set_visible(c.renderer == Renderer::Pixel);
         self.melt.set_active(c.melt);
-        self.lights.set_active(c.lights || c.effect == Effect::Lights);
-        self.lights.set_sensitive(c.effect != Effect::Lights);
+        self.lights.set_active(c.lights);
         self.ground.set_active(c.ground);
         self.windows.set_active(c.windows);
         self.layers.set_active(c.layers);
         self.bar_mode.set_selected(BarMode::ALL.iter().position(|m| *m == c.bar_mode).unwrap_or(0) as u32);
         self.bar_mode.set_sensitive(c.layers);
-        self.glow_row.set_visible(c.effect == Effect::Flowers);
         self.element_row.set_visible(c.effect == Effect::Flowers);
         self.element_row.set_selected(Element::ALL.iter().position(|e| *e == c.element).unwrap_or(0) as u32);
-        if let Some(rgb) = windfall_core::palette::parse_hex(&c.glow_color) {
-            self.glow_button.set_rgba(&gtk::gdk::RGBA::new(rgb[0], rgb[1], rgb[2], 1.0));
-        }
+        // Colours: each effect shows the ones that matter to it; lights have their own only when nothing else is on.
+        let one_colour = c.effect == Effect::Flowers && c.element == Element::Natural;
+        self.glow_row.set_visible(c.effect == Effect::Flowers);
+        self.hearts_row.set_visible(c.effect == Effect::Hearts);
+        self.comets_row.set_visible(c.effect == Effect::Comets);
+        self.lights_row.set_visible(c.effect == Effect::Off && c.lights);
+        self.flower_single.set_visible(one_colour);
+        self.flower_single.set_active(c.flower_single);
+        self.flower_row.set_visible(one_colour && c.flower_single);
+        self.colours.set_visible(c.effect == Effect::Flowers || c.effect == Effect::Hearts || c.effect == Effect::Comets || (c.effect == Effect::Off && c.lights));
+        self.glow_p.set_hex(&c.glow_color);
+        self.hearts_p.set_hex(&c.hearts_color);
+        self.comets_p.set_hex(&c.comet_color);
+        self.lights_p.set_hex(&c.lights_color);
+        self.flower_p.set_hex(&c.flower_color);
         self.interact.set_active(c.interact);
         self.over_fs.set_active(c.over_fullscreen);
         self.preview.set_config(c);
@@ -205,7 +228,6 @@ fn build(app: &adw::Application) {
         Effect::Leaves => "Leaves",
         Effect::Blossom => "Blossom",
         Effect::Comets => "Comets",
-        Effect::Lights => "Lights",
         Effect::Hearts => "Hearts",
         other => other.title(),
     };
@@ -216,8 +238,17 @@ fn build(app: &adw::Application) {
     }
     ebuttons.extend(ebuttons_b);
     let (renderer_row, rbuttons) = picker(Renderer::ALL.iter().enumerate().map(|(i, r)| (r.title().to_string(), i)).collect());
+    // A toggle right under the modes: lights work over every mode, Off included.
+    let lights = gtk::ToggleButton::with_label("✦  Floating lights  (on top of any mode)");
+    lights.set_tooltip_text(Some("Soft glowing circles over any effect, in its colours. With the effect Off you pick their colour."));
+    let lights_row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    lights_row.add_css_class("linked");
+    lights_row.add_css_class("effect-row");
+    lights.set_hexpand(true);
+    lights_row.append(&lights);
     page.append(&effect_row_a);
     page.append(&effect_row_b);
+    page.append(&lights_row);
     page.append(&renderer_row);
 
     let intensity = slider(0.0, 100.0, 1.0);
@@ -241,27 +272,40 @@ fn build(app: &adw::Application) {
 
     let enabled = switch_row("Display", "Show the effect on every monitor; remembered between sessions");
     let melt = switch_row("Melt and wither", "Piles slowly disappear on their own");
-    let lights = switch_row("Floating lights", "Soft glowing circles over any effect, in its colours (yellow on their own)");
     let ground = switch_row("Bottom of the screen", "Collect along the screen's lower edge");
     let windows = switch_row("Windows", "Collect on top of windows");
     let layers = switch_row("Bars and panels", "Waybar, Quickshell and other shell surfaces");
     let bar_mode = adw::ComboRow::builder().title("Bars hold things on").subtitle("Transparent bars: only their visible modules").build();
     bar_mode.set_model(Some(&gtk::StringList::new(&BarMode::ALL.map(|m| m.title()))));
-    let glow_button = gtk::ColorDialogButton::new(Some(gtk::ColorDialog::new()));
-    glow_button.set_valign(gtk::Align::Center);
-    let glow_row = adw::ActionRow::builder().title("Glow colour").subtitle("Flowers glow and sparkle in this colour").build();
-    glow_row.add_suffix(&glow_button);
+    let colour_row = |title: &str, subtitle: &str| -> (adw::ExpanderRow, Picker) {
+        let p = Picker::new();
+        let row = adw::ExpanderRow::builder().title(title).subtitle(subtitle).build();
+        row.add_suffix(&p.swatch);
+        row.add_row(&p.root);
+        (row, p)
+    };
+    let (glow_row, glow_p) = colour_row("Glow colour", "Flowers glow and sparkle in this colour");
+    let (hearts_row, hearts_p) = colour_row("Heart colour", "The hearts and their sparks");
+    let (comets_row, comets_p) = colour_row("Shooting star colour", "Tails, glow and the sparks where they hit");
+    let (lights_row, lights_p) = colour_row("Light colour", "Used while the effect is Off; with an effect on, the lights take its colours");
+    let flower_single = switch_row("One colour for all flowers", "Random shapes, one colour you pick");
+    let (flower_row, flower_p) = colour_row("Flower colour", "Every flower is a shade of this");
+    let colours = adw::PreferencesGroup::builder().title("Colours").build();
+    for r in [&hearts_row, &comets_row, &lights_row, &glow_row, &flower_row] {
+        colours.add(r);
+    }
+    colours.add(&flower_single);
     let interact = switch_row("React to the cursor", "Push snow aside, brush flowers");
     let over_fs = switch_row("Over fullscreen", "Keep drawing above fullscreen windows");
     let behaviour = adw::PreferencesGroup::new();
-    for r in [&enabled, &lights, &melt, &ground, &windows, &layers] {
+    for r in [&enabled, &melt, &ground, &windows, &layers] {
         behaviour.add(r);
     }
     behaviour.add(&bar_mode);
-    behaviour.add(&glow_row);
     for r in [&interact, &over_fs] {
         behaviour.add(r);
     }
+    page.append(&colours);
     page.append(&behaviour);
 
     let clear = gtk::Button::with_label("Clear everything");
@@ -293,9 +337,19 @@ fn build(app: &adw::Application) {
         windows,
         layers,
         bar_mode,
-        glow_row,
         element_row,
-        glow_button,
+        colours,
+        glow_row,
+        glow_p,
+        hearts_row,
+        hearts_p,
+        comets_row,
+        comets_p,
+        lights_row,
+        lights_p,
+        flower_single,
+        flower_row,
+        flower_p,
         interact,
         over_fs,
         banner,
@@ -346,12 +400,18 @@ fn build(app: &adw::Application) {
         });
     }
     {
+        let (ui2, ) = (ui.clone(),);
+        ui.glow_p.connect_changed(move |hexv| ui2.patch(Patch { glow_color: Some(hexv), ..Default::default() }));
         let ui2 = ui.clone();
-        ui.glow_button.connect_rgba_notify(move |b| {
-            let c = b.rgba();
-            let hex = windfall_core::palette::hex([c.red(), c.green(), c.blue()]);
-            ui2.patch(Patch { glow_color: Some(hex), ..Default::default() })
-        });
+        ui.hearts_p.connect_changed(move |hexv| ui2.patch(Patch { hearts_color: Some(hexv), ..Default::default() }));
+        let ui2 = ui.clone();
+        ui.comets_p.connect_changed(move |hexv| ui2.patch(Patch { comet_color: Some(hexv), ..Default::default() }));
+        let ui2 = ui.clone();
+        ui.lights_p.connect_changed(move |hexv| ui2.patch(Patch { lights_color: Some(hexv), ..Default::default() }));
+        let ui2 = ui.clone();
+        ui.flower_p.connect_changed(move |hexv| ui2.patch(Patch { flower_color: Some(hexv), flower_single: Some(true), ..Default::default() }));
+        let ui2 = ui.clone();
+        ui.flower_single.connect_active_notify(move |r| ui2.patch(Patch { flower_single: Some(r.is_active()), ..Default::default() }));
     }
     {
         let ui2 = ui.clone();
@@ -416,5 +476,11 @@ fn build(app: &adw::Application) {
     ui.banner.connect_button_clicked(|_| {
         let _ = std::process::Command::new("windfalld").spawn();
     });
+    // WINDFALL_EXPAND=1 opens the colour pickers (handy for screenshots).
+    if std::env::var_os("WINDFALL_EXPAND").is_some() {
+        for r in [&ui.hearts_row, &ui.comets_row, &ui.lights_row, &ui.glow_row, &ui.flower_row] {
+            r.set_expanded(true);
+        }
+    }
     window.present();
 }

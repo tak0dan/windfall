@@ -1,5 +1,11 @@
 use crate::{capture, gpu, hypr, msg, server, tray};
 
+/// The controller that belongs to this very build: the one next to this executable, else whatever is on PATH.
+pub fn gui_command() -> std::process::Command {
+    let beside = std::env::current_exe().ok().map(|p| p.with_file_name("windfall-gui")).filter(|p| p.exists());
+    std::process::Command::new(beside.unwrap_or_else(|| "windfall-gui".into()))
+}
+
 use calloop::timer::{TimeoutAction, Timer};
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
@@ -105,6 +111,10 @@ impl App {
             glow: windfall_core::config::glow_for(c),
             element: c.element,
             lights: c.lights,
+            lights_color: windfall_core::config::colors_of(c).0,
+            hearts: windfall_core::config::colors_of(c).1,
+            comet: windfall_core::config::colors_of(c).2,
+            flower_tint: windfall_core::config::colors_of(c).3,
         }
     }
 
@@ -124,9 +134,10 @@ impl App {
 
     /// Creates or destroys overlays to match what is wanted right now.
     fn reconcile(&mut self) {
-        self.awake.store(self.config.enabled, Ordering::Relaxed);
+        // With the effect Off and no lights the app just idles: no overlay, no polling.
+        self.awake.store(self.config.drawing(), Ordering::Relaxed);
         for i in 0..self.mons.len() {
-            let want = self.config.enabled
+            let want = self.config.drawing()
                 && self.mons[i].done
                 && self.mons[i].name.as_ref().and_then(|n| self.scenes.get(n)).is_some_and(|(_, fs)| self.config.over_fullscreen || !fs);
             let has = self.mons[i].overlay.is_some();
@@ -337,7 +348,7 @@ impl App {
 
     /// Looks at the bars of a monitor when they are new or have not been looked at for a while.
     fn calibrate(&mut self, name: &str) {
-        if !self.config.enabled || !self.config.layers || self.config.bar_mode != BarMode::Visible {
+        if !self.config.drawing() || !self.config.layers || self.config.bar_mode != BarMode::Visible {
             return;
         }
         let Some((raw, _)) = self.scenes.get(name) else { return };
@@ -429,7 +440,7 @@ impl App {
             }
             Msg::Clear => self.mons.iter_mut().for_each(|m| m.world.clear()),
             Msg::OpenGui => {
-                let _ = std::process::Command::new("windfall-gui").stdin(std::process::Stdio::null()).spawn();
+                let _ = gui_command().stdin(std::process::Stdio::null()).spawn();
             }
             Msg::Quit => self.quit = true,
             Msg::Ipc { req, reply, subscriber } => {
@@ -565,7 +576,7 @@ pub fn main() {
             let args: Vec<String> = std::env::args().collect();
             let as_app = args.first().and_then(|a| std::path::Path::new(a).file_name()).is_some_and(|n| n == "windfall") || args.iter().any(|a| a == "--controller");
             if as_app {
-                let _ = std::process::Command::new("windfall-gui").stdin(std::process::Stdio::null()).spawn();
+                let _ = gui_command().stdin(std::process::Stdio::null()).spawn();
             } else {
                 eprintln!("Windfall is already running.");
             }

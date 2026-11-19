@@ -8,7 +8,7 @@ usage: windfallctl <command>
 
   status [--json]       show the current settings
   toggle | on | off     show or hide the effect (remembered between sessions)
-  effect <name>         snow | leaves | blossom | rain | flowers | comets | lights | hearts
+  effect <name>         off | snow | leaves | blossom | rain | flowers | comets | hearts
   element <name>        what the flowers are made of: natural | lightning | fire | ice | matter | void
   lights [on|off]       floating lights over any effect, in its colours (yellow alone)
   renderer <name>       smooth | pixel
@@ -16,6 +16,7 @@ usage: windfallctl <command>
   opacity <10-100>      overall opacity
   pixel-size <1-10>     size of one art pixel (pixel renderer)
   bars <visible|whole>  grow on a bar's painted parts only, or on all of it
+  color <what> <#rrggbb>  hearts | comets | lights (used when the effect is off) | flowers (all one colour)
   glow <#rrggbb>        colour of the flowers' glow
   wind <-100..100>      sideways drift
   set <key>=<value>...  melt, ground, windows, layers, interact, over_fullscreen = true|false
@@ -74,6 +75,22 @@ fn run(args: &[String]) -> Result<(), String> {
         "pixel-size" => set(Patch { pixel_size: Some(num(args.get(1), 1.0, 10.0)? as u32), ..Default::default() }),
         "bars" => set(Patch { bar_mode: Some(args.get(1).and_then(|s| BarMode::parse(s)).ok_or("expected visible or whole")?), ..Default::default() }),
         "glow" => set(Patch { glow_color: Some(args.get(1).filter(|c| windfall_core::palette::parse_hex(c).is_some()).ok_or("expected a colour like #ffd84d")?.clone()), ..Default::default() }),
+        "color" | "colour" => {
+            let which = args.get(1).map(String::as_str).ok_or("usage: color <hearts|comets|lights|flowers> <#rrggbb>")?;
+            let hex = args.get(2).filter(|c| windfall_core::palette::parse_hex(c).is_some()).ok_or("expected a colour like #ff7399")?.clone();
+            let mut p = Patch::default();
+            match which {
+                "hearts" => p.hearts_color = Some(hex),
+                "comets" | "comet" => p.comet_color = Some(hex),
+                "lights" | "light" => p.lights_color = Some(hex),
+                "flowers" | "flower" => {
+                    p.flower_color = Some(hex);
+                    p.flower_single = Some(true);
+                }
+                _ => return Err("colours: hearts, comets, lights, flowers".into()),
+            }
+            set(p)
+        }
         "wind" => set(Patch { wind: Some(num(args.get(1), -100.0, 100.0)? / 100.0), ..Default::default() }),
         "set" => {
             let mut p = Patch::default();
@@ -82,6 +99,7 @@ fn run(args: &[String]) -> Result<(), String> {
                 let b = flag(v)?;
                 match k {
                     "lights" => p.lights = Some(b),
+                    "flower_single" => p.flower_single = Some(b),
                     "melt" => p.melt = Some(b),
                     "ground" => p.ground = Some(b),
                     "windows" => p.windows = Some(b),

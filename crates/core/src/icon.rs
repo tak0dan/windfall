@@ -8,6 +8,7 @@ pub fn glyph(effect: Effect, pixel: bool, enabled: bool) -> (Vec<u8>, i32) {
     let out: i32 = 32;
     let mut data = vec![0u8; (out * out * 4) as usize];
     let (r, g, b): (f32, f32, f32) = match effect {
+        Effect::Off => (0.62, 0.68, 0.78),
         Effect::Snow => (0.82, 0.93, 1.0),
         Effect::Leaves => (0.95, 0.55, 0.12),
         Effect::Blossom => (1.0, 0.55, 0.72),
@@ -25,6 +26,8 @@ pub fn glyph(effect: Effect, pixel: bool, enabled: bool) -> (Vec<u8>, i32) {
             let d = (x * x + y * y).sqrt();
             let ang = y.atan2(x);
             let cov: f32 = match effect {
+                // A ring with a slash: nothing is being drawn.
+                Effect::Off => (((d > 0.62 && d < 0.84) || ((x + y).abs() < 0.11 && d < 0.84)) as i32 as f32).max(0.0),
                 Effect::Snow => {
                     let arm = (0..3).map(|k| { let a = k as f32 * std::f32::consts::PI / 3.0; ((x * a.sin() - y * a.cos()).abs() < 0.11 && d < 0.88) as i32 as f32 }).fold(0.0, f32::max);
                     arm.max((d < 0.2) as i32 as f32)

@@ -59,7 +59,7 @@ const L_VOID: &[Rgb] = &[[0.4, 0.3, 0.9], [0.56, 0.36, 0.95]];
 pub fn orb_colors(effect: crate::config::Effect, element: crate::config::Element) -> &'static [Rgb] {
     use crate::config::{Effect::*, Element};
     match effect {
-        Lights => LIGHTS,
+        Off | Lights => LIGHTS,
         Snow => L_SNOW,
         Leaves => L_LEAVES,
         Blossom => L_BLOSSOM,
@@ -95,6 +95,7 @@ pub fn theme(effect: crate::config::Effect) -> Theme {
     use crate::config::Effect::*;
     let c = |h: u32| [((h >> 16) & 255) as f32 / 255.0, ((h >> 8) & 255) as f32 / 255.0, (h & 255) as f32 / 255.0];
     match effect {
+        Off => Theme { bg: c(0x14171d), surface: c(0x1e222b), fg: c(0xe4e8ef), muted: c(0x8b93a3), accent: c(0x9aa7c0), accent_fg: c(0x10131a), border: c(0x333a48) },
         Snow => Theme { bg: c(0x0f1b2b), surface: c(0x172a40), fg: c(0xe8f3ff), muted: c(0x8fa9c4), accent: c(0x8fd3ff), accent_fg: c(0x08243a), border: c(0x2a4666) },
         Leaves => Theme { bg: c(0x24160d), surface: c(0x352012), fg: c(0xfbe9d0), muted: c(0xc09a76), accent: c(0xf0a030), accent_fg: c(0x2a1500), border: c(0x5a3a22) },
         Blossom => Theme { bg: c(0x2a1420), surface: c(0x3d1f2e), fg: c(0xffe8f0), muted: c(0xcf9bb0), accent: c(0xff8fb1), accent_fg: c(0x3a0a1f), border: c(0x68304a) },
@@ -118,4 +119,10 @@ pub fn element_accent(e: crate::config::Element) -> Option<Rgb> {
         Matter => Some(c(0xd9a441)),
         Void => Some(c(0x6f5de0)),
     }
+}
+
+/// A few shades of one colour, for things that should vary a little around a chosen colour:
+/// the colour itself, a lighter one, a deeper one and a pale one.
+pub fn shades(c: Rgb) -> Vec<Rgb> {
+    vec![c, mix(c, [1.0, 1.0, 1.0], 0.38), mix(c, [0.0, 0.0, 0.0], 0.22), mix(c, [1.0, 1.0, 1.0], 0.68)]
 }

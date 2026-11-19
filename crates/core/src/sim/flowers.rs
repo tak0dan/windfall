@@ -142,14 +142,15 @@ pub struct Bed {
     f_wave: Option<f32>,
     g_wave: Option<f32>,
     element: Element,
+    tint: Option<Rgb>,
 }
 
 impl Bed {
-    pub fn new(s: &Surf, element: Element, rng: &mut Rng) -> Bed {
-        Bed::empty(s.kind, vec![Span::of(s)], element, rng)
+    pub fn new(s: &Surf, element: Element, tint: Option<Rgb>, rng: &mut Rng) -> Bed {
+        Bed::empty(s.kind, vec![Span::of(s)], element, tint, rng)
     }
 
-    fn empty(kind: SurfKind, spans: Vec<Span>, element: Element, rng: &mut Rng) -> Bed {
+    fn empty(kind: SurfKind, spans: Vec<Span>, element: Element, tint: Option<Rgb>, rng: &mut Rng) -> Bed {
         let edge = spans.iter().map(|s| s.left).fold(f32::MAX, f32::min);
         let mut b = Bed {
             kind,
@@ -168,6 +169,7 @@ impl Bed {
             f_wave: None,
             g_wave: None,
             element,
+            tint,
         };
         b.fill_grass(rng);
         b
@@ -270,7 +272,7 @@ impl Bed {
         let have = self.flowers.iter().filter(|f| !f.lost).count();
         for _ in have..cap {
             let Some((x, root)) = self.pick_spot(rng) else { return };
-            let mut f = new_flower(x, root, rng, None, self.element);
+            let mut f = new_flower(x, root, rng, None, self.element, self.tint);
             f.h = f.hmax;
             self.flowers.push(f);
         }
@@ -374,11 +376,12 @@ impl Bed {
     }
 
     /// Advances the lawn. Returns the heads of flowers that just puffed away.
-    pub fn step(&mut self, dt: f32, intensity: f32, element: Element, cursor: Option<[f32; 2]>, rng: &mut Rng, hidden_at: &dyn Fn(f32) -> bool) -> Vec<[f32; 2]> {
+    pub fn step(&mut self, dt: f32, intensity: f32, element: Element, tint: Option<Rgb>, cursor: Option<[f32; 2]>, rng: &mut Rng, hidden_at: &dyn Fn(f32) -> bool) -> Vec<[f32; 2]> {
         self.age += dt;
         self.element = element;
         self.cursor = cursor;
         self.intensity = intensity;
+        self.tint = tint;
         let mut puffs = Vec::new();
         let speed = if self.orphan { WAVE * 1.3 } else { WAVE };
 
@@ -455,7 +458,7 @@ impl Bed {
                 self.spawn_acc -= 1.0;
                 if self.flowers.iter().filter(|f| !f.lost).count() < cap {
                     if let Some((x, root)) = self.pick_spot(rng) {
-                        self.flowers.push(new_flower(x, root, rng, None, self.element));
+                        self.flowers.push(new_flower(x, root, rng, None, self.element, self.tint));
                     }
                 }
             }
@@ -576,7 +579,7 @@ impl Bed {
         }
         let old = (f.kind, f.hue);
         let (at, root) = (f.x, f.root);
-        self.flowers[i] = new_flower(at, root, rng, Some(old), self.element);
+        self.flowers[i] = new_flower(at, root, rng, Some(old), self.element, self.tint);
     }
 
     pub fn draw(&self, b: &mut Batch, pixel_size: f32, glow: Rgb) {
@@ -619,10 +622,15 @@ fn hue_distance(a: f32, b: f32) -> f32 {
 
 /// Colours of a flower of the given element, the hue `t` (0..1) choosing among its shades:
 /// (petals, middle, stem).
-fn element_colors(el: Element, t: f32, rng: &mut Rng) -> (Rgb, Rgb, Rgb) {
+fn element_colors(el: Element, t: f32, tint: Option<Rgb>, rng: &mut Rng) -> (Rgb, Rgb, Rgb) {
     match el {
         Element::Natural => {
-            let col = palette::hsv(t, rng.range(0.45, 0.95), rng.range(0.9, 1.0));
+            let col = match tint {
+                // One chosen colour, a little lighter or deeper from flower to flower.
+                Some(c) if t < 0.5 => palette::mix(c, [1.0, 1.0, 1.0], rng.range(0.0, 0.4)),
+                Some(c) => palette::mix(c, [0.0, 0.0, 0.0], rng.range(0.0, 0.25)),
+                None => palette::hsv(t, rng.range(0.45, 0.95), rng.range(0.9, 1.0)),
+            };
             let center = if rng.chance(0.7) { [1.0, 0.85, 0.25] } else { palette::mix(col, [1.0, 1.0, 1.0], 0.6) };
             (col, center, palette::mix(palette::STEM, [0.55, 0.85, 0.35], rng.f() * 0.7))
         }
@@ -654,7 +662,7 @@ fn grass_colors(el: Element) -> (Rgb, Rgb) {
 }
 
 /// `replacing`: the kind and hue of the flower that just burst, which the new one must differ from.
-fn new_flower(x: f32, root: f32, rng: &mut Rng, replacing: Option<(u8, f32)>, element: Element) -> Flower {
+fn new_flower(x: f32, root: f32, rng: &mut Rng, replacing: Option<(u8, f32)>, element: Element, tint: Option<Rgb>) -> Flower {
     let mut hue = rng.f();
     let mut kind = rng.below(5) as u8;
     if let Some((k, h)) = replacing {
@@ -665,7 +673,7 @@ fn new_flower(x: f32, root: f32, rng: &mut Rng, replacing: Option<(u8, f32)>, el
             kind = rng.below(5) as u8;
         }
     }
-    let (col, center, stem) = element_colors(element, hue, rng);
+    let (col, center, stem) = element_colors(element, hue, tint, rng);
     if element == Element::Fire {
         kind = 1; // tulips
     }
@@ -942,14 +950,14 @@ mod tests {
     fn run(bed: &mut Bed, rng: &mut Rng, secs: f32) -> Vec<[f32; 2]> {
         let mut out = Vec::new();
         for _ in 0..(secs * 60.0) as usize {
-            out.extend(bed.step(1.0 / 60.0, 0.6, Element::Natural, None, rng, &|_| false));
+            out.extend(bed.step(1.0 / 60.0, 0.6, Element::Natural, None, None, rng, &|_| false));
         }
         out
     }
 
     fn grown(s: &Surf) -> (Bed, Rng) {
         let mut rng = Rng::new(3);
-        let mut bed = Bed::new(s, Element::Natural, &mut rng);
+        let mut bed = Bed::new(s, Element::Natural, None, &mut rng);
         run(&mut bed, &mut rng, 20.0);
         (bed, rng)
     }
@@ -959,7 +967,7 @@ mod tests {
         let mut rng = Rng::new(9);
         for _ in 0..500 {
             let old = (rng.below(5) as u8, rng.f());
-            let f = new_flower(10.0, 100.0, &mut rng, Some(old), Element::Natural);
+            let f = new_flower(10.0, 100.0, &mut rng, Some(old), Element::Natural, None);
             assert_ne!(f.kind, old.0);
             assert!(hue_distance(f.hue, old.1) >= 0.18);
         }
@@ -1018,7 +1026,7 @@ mod tests {
         let mut order = Vec::new();
         let mut first_at = None;
         for i in 0..(4 * 60) {
-            for p in bed.step(1.0 / 60.0, 0.6, Element::Natural, None, &mut rng, &|_| false) {
+            for p in bed.step(1.0 / 60.0, 0.6, Element::Natural, None, None, &mut rng, &|_| false) {
                 first_at.get_or_insert(i);
                 order.push(p[0]);
             }
