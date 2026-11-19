@@ -54,7 +54,7 @@ or in `hyprland.conf`: `exec-once = windfalld` (Lua config: `hl.exec_cmd("windfa
 
 ### Windows 10 / 11
 
-Download `Windfall-Setup.exe` from the [Releases](https://github.com/tak0dan/windfall/releases) page. It installs for
+Download `Windfall-Setup.exe` from the [Releases](https://github.com/tak0dan/windfall/releases) page (or `Windfall-portable.exe`, a single file that needs no installation: run it and a tray icon appears). It installs for
 the current user (no administrator rights), starts with Windows and puts a tray icon in the notification area:
 click it for the controller, right-click for the menu. The controller is a small page served on `127.0.0.1` and shown
 in an Edge app window; `windfallctl.exe` works exactly like on Linux. Settings are in `%APPDATA%\windfall\config.toml`.
