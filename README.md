@@ -51,6 +51,17 @@ systemctl --user enable --now windfalld      # needs a systemd-aware Hyprland se
 
 or in `hyprland.conf`: `exec-once = windfalld` (Lua config: `hl.exec_cmd("windfalld")`).
 
+### Windows 10 / 11
+
+Download `Windfall-Setup.exe` from the [Releases](https://github.com/tak0dan/windfall/releases) page. It installs for
+the current user (no administrator rights), starts with Windows and puts a tray icon in the notification area:
+click it for the controller, right-click for the menu. The controller is a small page served on `127.0.0.1` and shown
+in an Edge app window; `windfallctl.exe` works exactly like on Linux. Settings are in `%APPDATA%\windfall\config.toml`.
+
+Windows differences: windows' top edges and the taskbar's top edge collect things (there are no bars/panels to
+detect), the overlay is a click-through layered window, and fullscreen apps pause it unless "Over fullscreen" is on.
+To build it yourself, run `windows/build.sh` (Docker only; it produces `dist/Windfall-Setup.exe`).
+
 ## Use
 
 ```sh
