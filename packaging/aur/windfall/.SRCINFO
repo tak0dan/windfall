@@ -1,8 +1,9 @@
 pkgbase = windfall
 	pkgdesc = Weather overlay for Hyprland: snow, leaves, petals and rain fall and pile up, flowers grow where they land (tray icon, GTK4 controller, pixel-art mode)
-	pkgver = 0.1.0
+	pkgver = 0.2.0
 	pkgrel = 1
 	url = https://github.com/tak0dan/windfall
+	install = windfall.install
 	arch = x86_64
 	arch = aarch64
 	license = GPL-3.0-or-later
@@ -17,7 +18,7 @@ pkgbase = windfall
 	optdepends = ttf-press-start-2p: authentic pixel font for the controller in pixel mode
 	options = !lto
 	options = !debug
-	source = windfall-0.1.0.tar.gz::https://github.com/tak0dan/windfall/archive/refs/tags/v0.1.0.tar.gz
-	sha256sums = 30a7290eacfdcf4c7b56b33b4e4e5ddedfc753c2ba5e72a571bcd14fd08ed8cf
+	source = windfall-0.2.0.tar.gz::https://github.com/tak0dan/windfall/archive/refs/tags/v0.2.0.tar.gz
+	sha256sums = 2d6f5b1fadf79850ccd82bef6a5ec6574b0bc3f2dcf375cb8147e6691572c3e5
 
 pkgname = windfall
