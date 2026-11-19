@@ -1,6 +1,6 @@
 # Builds the working tree this file sits in:   cd packaging && makepkg -si
 pkgname=windfall
-pkgver=0.3.0
+pkgver=0.4.0
 pkgrel=1
 pkgdesc="Snow, leaves, blossom, rain and flowers on your Hyprland desktop, with a tray icon and a GTK4 controller"
 arch=('x86_64' 'aarch64')

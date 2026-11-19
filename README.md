@@ -29,6 +29,7 @@ app Snowhush (no code from it is used).
 |---|---|---|
 | ![snow](docs/snow.png) | ![flowers](docs/flowers.png) | ![pixel blossom](docs/blossom-pixel.png) |
 | ![fire flowers](docs/flowers-fire.png) | ![ice flowers](docs/flowers-ice.png) | ![void flowers](docs/flowers-void.png) |
+| ![electro flowers](docs/flowers-lightning.png) | | |
 | ![hearts](docs/hearts.png) | ![lights](docs/lights.png) | ![comets](docs/comets.png) |
 
 ## Install

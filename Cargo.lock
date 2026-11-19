@@ -1542,7 +1542,7 @@ dependencies = [
 
 [[package]]
 name = "windfall-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1551,7 +1551,7 @@ dependencies = [
 
 [[package]]
 name = "windfall-gui"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-channel",
  "cairo-rs",
@@ -1563,7 +1563,7 @@ dependencies = [
 
 [[package]]
 name = "windfallctl"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde_json",
  "windfall-core",
@@ -1571,7 +1571,7 @@ dependencies = [
 
 [[package]]
 name = "windfalld"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "calloop",
  "calloop-wayland-source",
