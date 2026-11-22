@@ -13,7 +13,9 @@ pub type Stream = std::net::TcpStream;
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Request {
     Get,
-    Set { patch: Patch },
+    Set {
+        patch: Patch,
+    },
     Toggle,
     /// Blow away everything that has piled up.
     Clear,
@@ -38,20 +40,27 @@ pub enum Response {
 
 #[cfg(unix)]
 pub fn socket_path() -> PathBuf {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     dir.join("windfall.sock")
 }
 
 /// Where the Windows daemon writes the port it listens on.
 #[cfg(windows)]
 pub fn port_path() -> PathBuf {
-    let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let base = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     base.join("windfall").join("port")
 }
 
 #[cfg(windows)]
 pub fn port() -> std::io::Result<u16> {
-    std::fs::read_to_string(port_path())?.trim().parse().map_err(|_| std::io::Error::other("bad port file"))
+    std::fs::read_to_string(port_path())?
+        .trim()
+        .parse()
+        .map_err(|_| std::io::Error::other("bad port file"))
 }
 
 pub fn connect() -> std::io::Result<Stream> {

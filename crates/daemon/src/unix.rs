@@ -2,7 +2,10 @@ use crate::{capture, gpu, hypr, msg, server, tray};
 
 /// The controller that belongs to this very build: the one next to this executable, else whatever is on PATH.
 pub fn gui_command() -> std::process::Command {
-    let beside = std::env::current_exe().ok().map(|p| p.with_file_name("windfall-gui")).filter(|p| p.exists());
+    let beside = std::env::current_exe()
+        .ok()
+        .map(|p| p.with_file_name("windfall-gui"))
+        .filter(|p| p.exists());
     std::process::Command::new(beside.unwrap_or_else(|| "windfall-gui".into()))
 }
 
@@ -10,13 +13,6 @@ use calloop::timer::{TimeoutAction, Timer};
 use calloop::EventLoop;
 use calloop_wayland_source::WaylandSource;
 use msg::Msg;
-use windfall_core::config::{BarMode, Config, Renderer};
-use windfall_core::geom::Rect;
-use windfall_core::shape;
-use windfall_core::sim::{Surf, SurfKind};
-use windfall_core::draw::Batch;
-use windfall_core::ipc::{Request, Response, State};
-use windfall_core::sim::{Params, Scene, World};
 use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -27,12 +23,24 @@ use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{wl_compositor, wl_output, wl_region, wl_registry, wl_surface};
 use wayland_client::{delegate_noop, Connection, Dispatch, Proxy, QueueHandle};
 use wayland_egl::WlEglSurface;
-use wayland_protocols::wp::fractional_scale::v1::client::{wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1, wp_fractional_scale_v1::{self, WpFractionalScaleV1}};
-use wayland_protocols::wp::viewporter::client::{wp_viewport::WpViewport, wp_viewporter::WpViewporter};
+use wayland_protocols::wp::fractional_scale::v1::client::{
+    wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
+    wp_fractional_scale_v1::{self, WpFractionalScaleV1},
+};
+use wayland_protocols::wp::viewporter::client::{
+    wp_viewport::WpViewport, wp_viewporter::WpViewporter,
+};
 use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1::{Layer, ZwlrLayerShellV1},
     zwlr_layer_surface_v1::{self, Anchor, KeyboardInteractivity, ZwlrLayerSurfaceV1},
 };
+use windfall_core::config::{BarMode, Config, Renderer};
+use windfall_core::draw::Batch;
+use windfall_core::geom::Rect;
+use windfall_core::ipc::{Request, Response, State};
+use windfall_core::shape;
+use windfall_core::sim::{Params, Scene, World};
+use windfall_core::sim::{Surf, SurfKind};
 
 struct Overlay {
     surface: wl_surface::WlSurface,
@@ -51,6 +59,7 @@ struct Mon {
     output: wl_output::WlOutput,
     name: Option<String>,
     int_scale: i32,
+    mode: (i32, i32),
     done: bool,
     overlay: Option<Overlay>,
     world: World,
@@ -92,6 +101,8 @@ struct App {
     debug: bool,
     debug_at: Instant,
     cal_at: Instant,
+    hyprland: bool,
+    screencopy: bool,
 }
 
 impl App {
@@ -107,7 +118,11 @@ impl App {
             windows: c.windows,
             layers: c.layers,
             pixel: c.renderer == Renderer::Pixel,
-            pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
+            pixel_size: if c.renderer == Renderer::Pixel {
+                c.pixel_size as f32
+            } else {
+                0.0
+            },
             glow: windfall_core::config::glow_for(c),
             element: c.element,
             lights: c.lights,
@@ -119,13 +134,21 @@ impl App {
     }
 
     fn state(&self) -> State {
-        State { config: self.config.clone(), version: env!("CARGO_PKG_VERSION").into(), monitors: self.mons.iter().filter_map(|m| m.name.clone()).collect() }
+        State {
+            config: self.config.clone(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            monitors: self.mons.iter().filter_map(|m| m.name.clone()).collect(),
+        }
     }
 
     fn broadcast(&mut self) {
-        let mut line = serde_json::to_string(&Response::Ok { state: self.state() }).unwrap_or_default();
+        let mut line = serde_json::to_string(&Response::Ok {
+            state: self.state(),
+        })
+        .unwrap_or_default();
         line.push('\n');
-        self.subscribers.retain_mut(|s| s.write_all(line.as_bytes()).is_ok());
+        self.subscribers
+            .retain_mut(|s| s.write_all(line.as_bytes()).is_ok());
         if let Some(t) = &self.tray {
             let cfg = self.config.clone();
             t.update(move |tr| tr.config = cfg);
@@ -139,7 +162,11 @@ impl App {
         for i in 0..self.mons.len() {
             let want = self.config.drawing()
                 && self.mons[i].done
-                && self.mons[i].name.as_ref().and_then(|n| self.scenes.get(n)).is_some_and(|(_, fs)| self.config.over_fullscreen || !fs);
+                && self.mons[i]
+                    .name
+                    .as_ref()
+                    .and_then(|n| self.scenes.get(n))
+                    .is_some_and(|(_, fs)| self.config.over_fullscreen || !fs);
             let has = self.mons[i].overlay.is_some();
             if want && !has {
                 self.create_overlay(i);
@@ -152,7 +179,14 @@ impl App {
     fn create_overlay(&mut self, i: usize) {
         let gname = self.mons[i].gname;
         let surface = self.compositor.create_surface(&self.qh, ());
-        let layer = self.layer_shell.get_layer_surface(&surface, Some(&self.mons[i].output), Layer::Overlay, "windfall".into(), &self.qh, gname);
+        let layer = self.layer_shell.get_layer_surface(
+            &surface,
+            Some(&self.mons[i].output),
+            Layer::Overlay,
+            "windfall".into(),
+            &self.qh,
+            gname,
+        );
         layer.set_anchor(Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right);
         layer.set_exclusive_zone(-1);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
@@ -161,17 +195,34 @@ impl App {
         let region = self.compositor.create_region(&self.qh, ());
         surface.set_input_region(Some(&region));
         region.destroy();
-        let viewport = self.viewporter.as_ref().map(|v| v.get_viewport(&surface, &self.qh, ()));
-        let frac = self.frac_mgr.as_ref().map(|m| m.get_fractional_scale(&surface, &self.qh, gname));
+        let viewport = self
+            .viewporter
+            .as_ref()
+            .map(|v| v.get_viewport(&surface, &self.qh, ()));
+        let frac = self
+            .frac_mgr
+            .as_ref()
+            .map(|m| m.get_fractional_scale(&surface, &self.qh, gname));
         surface.commit();
         if let Some(n) = self.mons[i].name.clone() {
             self.push_scene(&n);
         }
-        self.mons[i].overlay = Some(Overlay { surface, layer, viewport, frac, egl_win: None, target: None, size: (0, 0), frac_scale: None });
+        self.mons[i].overlay = Some(Overlay {
+            surface,
+            layer,
+            viewport,
+            frac,
+            egl_win: None,
+            target: None,
+            size: (0, 0),
+            frac_scale: None,
+        });
     }
 
     fn destroy_overlay(&mut self, i: usize) {
-        let Some(mut ov) = self.mons[i].overlay.take() else { return };
+        let Some(mut ov) = self.mons[i].overlay.take() else {
+            return;
+        };
         if let (Some(t), Some(g)) = (ov.target.take(), &self.gpu) {
             g.destroy(t);
         }
@@ -188,12 +239,19 @@ impl App {
 
     /// The buffer follows the layer surface's size; (re)creates the EGL window when it changes.
     fn configure(&mut self, gname: u32, w: u32, h: u32) {
-        let Some(i) = self.mons.iter().position(|m| m.gname == gname) else { return };
+        let Some(i) = self.mons.iter().position(|m| m.gname == gname) else {
+            return;
+        };
         let int_scale = self.mons[i].int_scale.max(1);
-        let Some(ov) = self.mons[i].overlay.as_mut() else { return };
+        let Some(ov) = self.mons[i].overlay.as_mut() else {
+            return;
+        };
         ov.size = (w, h);
         let scale = ov.frac_scale.unwrap_or(int_scale as f32);
-        let (bw, bh) = (((w as f32 * scale).round() as i32).max(1), ((h as f32 * scale).round() as i32).max(1));
+        let (bw, bh) = (
+            ((w as f32 * scale).round() as i32).max(1),
+            ((h as f32 * scale).round() as i32).max(1),
+        );
         if let Some(v) = &ov.viewport {
             v.set_destination(w as i32, h as i32);
         } else {
@@ -202,7 +260,8 @@ impl App {
         match &ov.egl_win {
             Some(win) => win.resize(bw, bh, 0, 0),
             None => {
-                ov.egl_win = Some(WlEglSurface::new(ov.surface.id(), bw, bh).expect("wl_egl_window"));
+                ov.egl_win =
+                    Some(WlEglSurface::new(ov.surface.id(), bw, bh).expect("wl_egl_window"));
                 if self.gpu.is_none() {
                     match gpu::Gpu::new(self.conn.backend().display_ptr() as *mut _) {
                         Ok(g) => {
@@ -256,8 +315,12 @@ impl App {
         let Some(g) = &self.gpu else { return };
         let debug_now = self.debug && now.duration_since(self.debug_at).as_secs() >= 2;
         for m in &mut self.mons {
-            let Some(ov) = m.overlay.as_mut() else { continue };
-            let Some(target) = ov.target.as_mut() else { continue };
+            let Some(ov) = m.overlay.as_mut() else {
+                continue;
+            };
+            let Some(target) = ov.target.as_mut() else {
+                continue;
+            };
             if ov.size.0 == 0 {
                 continue;
             }
@@ -265,17 +328,44 @@ impl App {
             self.batch.clear();
             m.world.draw(&mut self.batch, &params);
             let scale = ov.frac_scale.unwrap_or(m.int_scale.max(1) as f32);
-            let buf = (((ov.size.0 as f32 * scale).round() as i32).max(1), ((ov.size.1 as f32 * scale).round() as i32).max(1));
+            let buf = (
+                ((ov.size.0 as f32 * scale).round() as i32).max(1),
+                ((ov.size.1 as f32 * scale).round() as i32).max(1),
+            );
             let opts = gpu::Opts {
                 buf,
                 logical: (ov.size.0 as f32, ov.size.1 as f32),
                 scale,
                 opacity: self.config.opacity,
-                pixel: (self.config.renderer == Renderer::Pixel).then_some((self.config.pixel_size, self.config.pixel_levels)),
-                clear: m.name.as_ref().and_then(|n| self.bare.get(n)).map(|v| v.iter().map(|r| [(r[0] as f32 * scale) as i32, (r[1] as f32 * scale) as i32, (r[2] as f32 * scale).ceil() as i32, (r[3] as f32 * scale).ceil() as i32]).collect()).unwrap_or_default(),
+                pixel: (self.config.renderer == Renderer::Pixel)
+                    .then_some((self.config.pixel_size, self.config.pixel_levels)),
+                clear: m
+                    .name
+                    .as_ref()
+                    .and_then(|n| self.bare.get(n))
+                    .map(|v| {
+                        v.iter()
+                            .map(|r| {
+                                [
+                                    (r[0] as f32 * scale) as i32,
+                                    (r[1] as f32 * scale) as i32,
+                                    (r[2] as f32 * scale).ceil() as i32,
+                                    (r[3] as f32 * scale).ceil() as i32,
+                                ]
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             };
             if self.debug && now.duration_since(self.debug_at).as_secs() >= 2 {
-                eprintln!("windfall: {} parts={} verts={} mass={:.0} buf={:?}", m.name.as_deref().unwrap_or("?"), m.world.particle_count(), self.batch.vertex_count(), m.world.pile_mass(), buf);
+                eprintln!(
+                    "windfall: {} parts={} verts={} mass={:.0} buf={:?}",
+                    m.name.as_deref().unwrap_or("?"),
+                    m.world.particle_count(),
+                    self.batch.vertex_count(),
+                    m.world.pile_mass(),
+                    buf
+                );
             }
             g.draw(target, &self.batch.data, &opts);
         }
@@ -286,7 +376,9 @@ impl App {
 
     /// The scene for the simulation: bars replaced by the parts of them that are painted.
     fn push_scene(&mut self, name: &str) {
-        let Some((raw, _)) = self.scenes.get(name) else { return };
+        let Some((raw, _)) = self.scenes.get(name) else {
+            return;
+        };
         let mut scene = raw.clone();
         if self.config.bar_mode == BarMode::Visible {
             let mut surfs: Vec<Surf> = Vec::new();
@@ -311,7 +403,10 @@ impl App {
                             let mut best: Option<(usize, f32)> = None;
                             for (k, (_, p0, p1)) in prev.iter().enumerate() {
                                 let ov = (a1.min(*p1) - a0.max(*p0)).max(0.0);
-                                if !used[k] && ov >= 0.4 * (a1 - a0).min(p1 - p0) && best.map_or(true, |(_, b)| ov > b) {
+                                if !used[k]
+                                    && ov >= 0.4 * (a1 - a0).min(p1 - p0)
+                                    && best.map_or(true, |(_, b)| ov > b)
+                                {
                                     best = Some((k, ov));
                                 }
                             }
@@ -328,11 +423,17 @@ impl App {
                             now.push((id, a0, a1));
                             surfs.push(Surf {
                                 id,
-                                rect: Rect::new(a0, s.rect.y + g.top, a1 - a0, (s.rect.h - g.top).max(1.0)),
+                                rect: Rect::new(
+                                    a0,
+                                    s.rect.y + g.top,
+                                    a1 - a0,
+                                    (s.rect.h - g.top).max(1.0),
+                                ),
                                 z: s.z,
                                 kind: SurfKind::Layer,
                                 inset: 2.0,
-                                group: s.id, shown: true,
+                                group: s.id,
+                                shown: true,
                             });
                         }
                         self.seg_ids.insert(s.id, now);
@@ -341,42 +442,131 @@ impl App {
             }
             scene.surfs = surfs;
         }
-        if let Some(m) = self.mons.iter_mut().find(|m| m.name.as_deref() == Some(name)) {
+        if let Some(m) = self
+            .mons
+            .iter_mut()
+            .find(|m| m.name.as_deref() == Some(name))
+        {
             m.world.set_scene(scene);
         }
     }
 
     /// Looks at the bars of a monitor when they are new or have not been looked at for a while.
     fn calibrate(&mut self, name: &str) {
-        if !self.config.drawing() || !self.config.layers || self.config.bar_mode != BarMode::Visible {
+        if !self.screencopy
+            || !self.config.drawing()
+            || !self.config.layers
+            || self.config.bar_mode != BarMode::Visible
+        {
             return;
         }
-        let Some((raw, _)) = self.scenes.get(name) else { return };
-        let layers: Vec<(u64, [i32; 4])> = raw.surfs.iter().filter(|s| s.kind == SurfKind::Layer).map(|s| (s.id, [s.rect.x as i32, s.rect.y as i32, s.rect.w as i32, s.rect.h as i32])).collect();
+        let Some((raw, _)) = self.scenes.get(name) else {
+            return;
+        };
+        let layers: Vec<(u64, [i32; 4])> = raw
+            .surfs
+            .iter()
+            .filter(|s| s.kind == SurfKind::Layer)
+            .map(|s| {
+                (
+                    s.id,
+                    [
+                        s.rect.x as i32,
+                        s.rect.y as i32,
+                        s.rect.w as i32,
+                        s.rect.h as i32,
+                    ],
+                )
+            })
+            .collect();
         if layers.is_empty() {
             return;
         }
         let cal = self.calibration.get(name);
-        if cal.is_some_and(|c| c.busy || (c.key == layers && c.at.elapsed() < Duration::from_millis(1200))) {
+        if cal.is_some_and(|c| {
+            c.busy || (c.key == layers && c.at.elapsed() < Duration::from_millis(1200))
+        }) {
             return;
         }
-        self.calibration.insert(name.to_string(), Calibration { key: layers.clone(), at: Instant::now(), busy: true });
+        self.calibration.insert(
+            name.to_string(),
+            Calibration {
+                key: layers.clone(),
+                at: Instant::now(),
+                busy: true,
+            },
+        );
         let (tx, monitor) = (self.send.clone(), name.to_string());
         std::thread::spawn(move || {
             // Keep our own drawing off the bars for a moment so only the bars themselves are photographed.
             let bands: Vec<[i32; 4]> = layers.iter().map(|(_, r)| *r).collect();
-            let _ = tx.send(Msg::Hide { monitor: monitor.clone(), bands });
+            let _ = tx.send(Msg::Hide {
+                monitor: monitor.clone(),
+                bands,
+            });
             std::thread::sleep(Duration::from_millis(80));
             for (id, [x, y, w, h]) in &layers {
                 let rows = (*h).min(40);
                 let segs = capture::grab(&monitor, (*x, *y, *w, rows)).and_then(|img| {
-                    let strip = shape::Strip { data: &img.data, w: img.w, h: img.h, stride: img.stride };
+                    let strip = shape::Strip {
+                        data: &img.data,
+                        w: img.w,
+                        h: img.h,
+                        stride: img.stride,
+                    };
                     Some(shape::segments(&strip))
                 });
                 let _ = tx.send(Msg::Mask { id: *id, segs });
             }
-            let _ = tx.send(Msg::Calibrated { monitor, key: layers });
+            let _ = tx.send(Msg::Calibrated {
+                monitor,
+                key: layers,
+            });
         });
+    }
+
+    /// Compositors such as KWin expose layer-shell but not Hyprland's window IPC. Keep a useful screen-edge
+    /// scene in that case, and leave window/bar geometry to backends that can actually provide it.
+    fn refresh_output_scenes(&mut self) {
+        if self.hyprland {
+            return;
+        }
+        let mut names = Vec::new();
+        for m in &self.mons {
+            let Some(name) = m.name.clone() else { continue };
+            if !m.done || m.mode.0 <= 0 || m.mode.1 <= 0 {
+                continue;
+            }
+            let scale = m.int_scale.max(1) as f32;
+            let w = m.mode.0 as f32 / scale;
+            let h = m.mode.1 as f32 / scale;
+            let ground = Surf {
+                id: 1,
+                rect: Rect::new(0.0, h, w, 4000.0),
+                z: -1,
+                kind: SurfKind::Ground,
+                inset: 0.0,
+                group: 0,
+                shown: true,
+            };
+            self.scenes.insert(
+                name.clone(),
+                (
+                    Scene {
+                        w,
+                        h,
+                        surfs: vec![ground],
+                        cursor: None,
+                    },
+                    false,
+                ),
+            );
+            names.push(name);
+        }
+        for name in &names {
+            self.push_scene(name);
+        }
+        self.reconcile();
     }
 
     fn apply(&mut self, patch: &windfall_core::config::Patch) {
@@ -421,7 +611,13 @@ impl App {
             }
             Msg::Mask { id, segs } => {
                 if self.debug {
-                    eprintln!("windfall: layer {id:x} -> {:?}", segs.as_ref().map(|v| v.iter().map(|g| (g.x0 as i32, g.x1 as i32, g.top as i32)).collect::<Vec<_>>()));
+                    eprintln!(
+                        "windfall: layer {id:x} -> {:?}",
+                        segs.as_ref().map(|v| v
+                            .iter()
+                            .map(|g| (g.x0 as i32, g.x1 as i32, g.top as i32))
+                            .collect::<Vec<_>>())
+                    );
                 }
                 self.masks.insert(id, segs);
                 let names: Vec<String> = self.scenes.keys().cloned().collect();
@@ -431,19 +627,33 @@ impl App {
             }
             Msg::Calibrated { monitor, key } => {
                 self.bare.remove(&monitor);
-                self.calibration.insert(monitor, Calibration { key, at: Instant::now(), busy: false });
+                self.calibration.insert(
+                    monitor,
+                    Calibration {
+                        key,
+                        at: Instant::now(),
+                        busy: false,
+                    },
+                );
             }
             Msg::Patch(p) => self.apply(&p),
             Msg::Toggle => {
                 let on = !self.config.enabled;
-                self.apply(&windfall_core::config::Patch { enabled: Some(on), ..Default::default() });
+                self.apply(&windfall_core::config::Patch {
+                    enabled: Some(on),
+                    ..Default::default()
+                });
             }
             Msg::Clear => self.mons.iter_mut().for_each(|m| m.world.clear()),
             Msg::OpenGui => {
                 let _ = gui_command().stdin(std::process::Stdio::null()).spawn();
             }
             Msg::Quit => self.quit = true,
-            Msg::Ipc { req, reply, subscriber } => {
+            Msg::Ipc {
+                req,
+                reply,
+                subscriber,
+            } => {
                 match req {
                     Request::Get => {}
                     Request::Set { patch } => self.apply(&patch),
@@ -452,7 +662,10 @@ impl App {
                     Request::Quit => self.quit = true,
                     Request::Subscribe => {
                         if let Some(mut s) = subscriber {
-                            let mut line = serde_json::to_string(&Response::Ok { state: self.state() }).unwrap_or_default();
+                            let mut line = serde_json::to_string(&Response::Ok {
+                                state: self.state(),
+                            })
+                            .unwrap_or_default();
                             line.push('\n');
                             // The reply below is the first line; later ones come from broadcast().
                             let _ = line;
@@ -461,18 +674,41 @@ impl App {
                         }
                     }
                 }
-                let _ = reply.send(Response::Ok { state: self.state() });
+                let _ = reply.send(Response::Ok {
+                    state: self.state(),
+                });
             }
         }
     }
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
-    fn event(app: &mut Self, registry: &wl_registry::WlRegistry, event: wl_registry::Event, _: &GlobalListContents, _: &Connection, qh: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        registry: &wl_registry::WlRegistry,
+        event: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
         match event {
-            wl_registry::Event::Global { name, interface, version } if interface == "wl_output" => {
-                let output = registry.bind::<wl_output::WlOutput, _, _>(name, version.min(4), qh, name);
-                app.mons.push(Mon { gname: name, output, name: None, int_scale: 1, done: false, overlay: None, world: World::new(name as u64 * 7919 + 13) });
+            wl_registry::Event::Global {
+                name,
+                interface,
+                version,
+            } if interface == "wl_output" => {
+                let output =
+                    registry.bind::<wl_output::WlOutput, _, _>(name, version.min(4), qh, name);
+                app.mons.push(Mon {
+                    gname: name,
+                    output,
+                    name: None,
+                    int_scale: 1,
+                    mode: (0, 0),
+                    done: false,
+                    overlay: None,
+                    world: World::new(name as u64 * 7919 + 13),
+                });
             }
             wl_registry::Event::GlobalRemove { name } => {
                 if let Some(i) = app.mons.iter().position(|m| m.gname == name) {
@@ -486,14 +722,35 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
 }
 
 impl Dispatch<wl_output::WlOutput, u32> for App {
-    fn event(app: &mut Self, _: &wl_output::WlOutput, event: wl_output::Event, gname: &u32, _: &Connection, _: &QueueHandle<Self>) {
-        let Some(m) = app.mons.iter_mut().find(|m| m.gname == *gname) else { return };
+    fn event(
+        app: &mut Self,
+        _: &wl_output::WlOutput,
+        event: wl_output::Event,
+        gname: &u32,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let Some(m) = app.mons.iter_mut().find(|m| m.gname == *gname) else {
+            return;
+        };
         match event {
             wl_output::Event::Name { name } => m.name = Some(name),
             wl_output::Event::Scale { factor } => m.int_scale = factor,
+            wl_output::Event::Mode {
+                flags,
+                width,
+                height,
+                ..
+            } => {
+                if matches!(flags, wayland_client::WEnum::Value(f) if f.contains(wl_output::Mode::Current))
+                {
+                    m.mode = (width, height);
+                }
+            }
             wl_output::Event::Done => {
                 m.done = true;
                 app.reconcile();
+                app.refresh_output_scenes();
             }
             _ => {}
         }
@@ -501,9 +758,20 @@ impl Dispatch<wl_output::WlOutput, u32> for App {
 }
 
 impl Dispatch<ZwlrLayerSurfaceV1, u32> for App {
-    fn event(app: &mut Self, layer: &ZwlrLayerSurfaceV1, event: zwlr_layer_surface_v1::Event, gname: &u32, _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        layer: &ZwlrLayerSurfaceV1,
+        event: zwlr_layer_surface_v1::Event,
+        gname: &u32,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match event {
-            zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
+            zwlr_layer_surface_v1::Event::Configure {
+                serial,
+                width,
+                height,
+            } => {
                 layer.ack_configure(serial);
                 app.configure(*gname, width, height);
                 app.tick_one(*gname);
@@ -527,9 +795,21 @@ impl App {
 }
 
 impl Dispatch<WpFractionalScaleV1, u32> for App {
-    fn event(app: &mut Self, _: &WpFractionalScaleV1, event: wp_fractional_scale_v1::Event, gname: &u32, _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &WpFractionalScaleV1,
+        event: wp_fractional_scale_v1::Event,
+        gname: &u32,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event {
-            if let Some(ov) = app.mons.iter_mut().find(|m| m.gname == *gname).and_then(|m| m.overlay.as_mut()) {
+            if let Some(ov) = app
+                .mons
+                .iter_mut()
+                .find(|m| m.gname == *gname)
+                .and_then(|m| m.overlay.as_mut())
+            {
                 ov.frac_scale = Some(scale as f32 / 120.0);
                 let (w, h) = ov.size;
                 if w > 0 {
@@ -549,23 +829,52 @@ delegate_noop!(App: ignore WpViewport);
 delegate_noop!(App: ignore WpFractionalScaleManagerV1);
 
 pub fn main() {
-    if !hypr::available() {
-        eprintln!("windfall: Hyprland's IPC socket was not found; run this inside a Hyprland session.");
-        std::process::exit(1);
-    }
+    let hyprland = hypr::available();
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP")
+        .or_else(|_| std::env::var("XDG_SESSION_DESKTOP"))
+        .unwrap_or_else(|_| "unknown desktop".into());
+    let session = std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| {
+        if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+            "wayland".into()
+        } else {
+            "unknown".into()
+        }
+    });
+    eprintln!("windfall: detected {desktop} / {session} session");
     let conn = Connection::connect_to_env().unwrap_or_else(|e| {
         eprintln!("windfall: cannot connect to Wayland: {e}");
         std::process::exit(1);
     });
     let (globals, queue) = registry_queue_init::<App>(&conn).expect("registry");
     let qh = queue.handle();
-    let compositor = globals.bind::<wl_compositor::WlCompositor, _, _>(&qh, 4..=6, ()).expect("wl_compositor");
+    let compositor = globals
+        .bind::<wl_compositor::WlCompositor, _, _>(&qh, 4..=6, ())
+        .expect("wl_compositor");
     let layer_shell = globals.bind::<ZwlrLayerShellV1, _, _>(&qh, 1..=4, ()).unwrap_or_else(|_| {
-        eprintln!("windfall: the compositor has no wlr-layer-shell");
+        eprintln!("windfall: this Wayland compositor does not expose wlr-layer-shell; use a session that supports click-through overlays");
         std::process::exit(1);
     });
+    let screencopy = globals.contents().with_list(|list| {
+        list.iter()
+            .any(|g| g.interface == "zwlr_screencopy_manager_v1")
+    });
+    if hyprland {
+        eprintln!(
+            "windfall: Hyprland backend active (windows, bars, cursor and fullscreen detection)"
+        );
+    } else if desktop.to_ascii_lowercase().contains("kde")
+        || desktop.to_ascii_lowercase().contains("plasma")
+    {
+        eprintln!("windfall: Plasma Wayland backend active (screen-edge effects; window/bar geometry is not exposed by KWin)");
+    } else {
+        eprintln!("windfall: generic Wayland layer-shell backend active (screen-edge effects; compositor window geometry unavailable)");
+    }
     let viewporter = globals.bind::<WpViewporter, _, _>(&qh, 1..=1, ()).ok();
-    let frac_mgr = viewporter.as_ref().and_then(|_| globals.bind::<WpFractionalScaleManagerV1, _, _>(&qh, 1..=1, ()).ok());
+    let frac_mgr = viewporter.as_ref().and_then(|_| {
+        globals
+            .bind::<WpFractionalScaleManagerV1, _, _>(&qh, 1..=1, ())
+            .ok()
+    });
 
     let mut event_loop: EventLoop<App> = EventLoop::try_new().expect("event loop");
     let handle = event_loop.handle();
@@ -574,7 +883,11 @@ pub fn main() {
         if e.kind() == std::io::ErrorKind::AddrInUse {
             // Already running. Started by hand (or from the app menu) it just opens the controller.
             let args: Vec<String> = std::env::args().collect();
-            let as_app = args.first().and_then(|a| std::path::Path::new(a).file_name()).is_some_and(|n| n == "windfall") || args.iter().any(|a| a == "--controller");
+            let as_app = args
+                .first()
+                .and_then(|a| std::path::Path::new(a).file_name())
+                .is_some_and(|n| n == "windfall")
+                || args.iter().any(|a| a == "--controller");
             if as_app {
                 let _ = gui_command().stdin(std::process::Stdio::null()).spawn();
             } else {
@@ -586,8 +899,13 @@ pub fn main() {
         std::process::exit(1);
     }
     let awake = Arc::new(AtomicBool::new(true));
-    let hypr_tx = tx.clone();
-    hypr::spawn(move |s| hypr_tx.send(Msg::Snapshot(s)).is_ok(), awake.clone());
+    if hyprland {
+        let hypr_tx = tx.clone();
+        hypr::spawn(
+            move |s| hypr_tx.send(Msg::Snapshot(s)).is_ok(),
+            awake.clone(),
+        );
+    }
 
     let config = Config::load();
     // The tray icon. At login this daemon often starts before the bar (the StatusNotifier watcher) exists, so it
@@ -601,7 +919,13 @@ pub fn main() {
                 use ksni::blocking::TrayMethods;
                 let mut attempt = 0u32;
                 loop {
-                    match (tray::Tray { config: config.clone(), tx: tx.clone() }).assume_sni_available(true).spawn() {
+                    match (tray::Tray {
+                        config: config.clone(),
+                        tx: tx.clone(),
+                    })
+                    .assume_sni_available(true)
+                    .spawn()
+                    {
                         Ok(handle) => {
                             eprintln!("windfall: tray ready");
                             let _ = tx.send(Msg::TrayReady(handle));
@@ -648,27 +972,58 @@ pub fn main() {
         debug: std::env::var_os("WINDFALL_DEBUG").is_some(),
         debug_at: Instant::now(),
         cal_at: Instant::now(),
+        hyprland,
+        screencopy,
     };
 
     // Outputs that already exist; later ones arrive as registry events.
     globals.contents().with_list(|list| {
         for g in list.iter().filter(|g| g.interface == "wl_output") {
-            let output = globals.registry().bind::<wl_output::WlOutput, _, _>(g.name, g.version.min(4), &qh, g.name);
-            app.mons.push(Mon { gname: g.name, output, name: None, int_scale: 1, done: false, overlay: None, world: World::new(g.name as u64 * 7919 + 13) });
+            let output = globals.registry().bind::<wl_output::WlOutput, _, _>(
+                g.name,
+                g.version.min(4),
+                &qh,
+                g.name,
+            );
+            app.mons.push(Mon {
+                gname: g.name,
+                output,
+                name: None,
+                int_scale: 1,
+                mode: (0, 0),
+                done: false,
+                overlay: None,
+                world: World::new(g.name as u64 * 7919 + 13),
+            });
         }
     });
-    handle.insert_source(rx, |ev, _, app| {
-        if let calloop::channel::Event::Msg(m) = ev {
-            app.handle(m);
-        }
-    }).expect("channel source");
-    handle.insert_source(Timer::from_duration(Duration::from_millis(50)), |_, _, app| {
-        app.tick();
-        TimeoutAction::ToDuration(app.interval())
-    }).expect("timer");
-    let signals = calloop::signals::Signals::new(&[calloop::signals::Signal::SIGINT, calloop::signals::Signal::SIGTERM]).expect("signals");
-    handle.insert_source(signals, |_, _, app| app.quit = true).expect("signals source");
-    WaylandSource::new(conn, queue).insert(handle).expect("wayland source");
+    handle
+        .insert_source(rx, |ev, _, app| {
+            if let calloop::channel::Event::Msg(m) = ev {
+                app.handle(m);
+            }
+        })
+        .expect("channel source");
+    handle
+        .insert_source(
+            Timer::from_duration(Duration::from_millis(50)),
+            |_, _, app| {
+                app.tick();
+                TimeoutAction::ToDuration(app.interval())
+            },
+        )
+        .expect("timer");
+    let signals = calloop::signals::Signals::new(&[
+        calloop::signals::Signal::SIGINT,
+        calloop::signals::Signal::SIGTERM,
+    ])
+    .expect("signals");
+    handle
+        .insert_source(signals, |_, _, app| app.quit = true)
+        .expect("signals source");
+    WaylandSource::new(conn, queue)
+        .insert(handle)
+        .expect("wayland source");
 
     let stop = event_loop.get_signal();
     let _ = event_loop.run(None, &mut app, |app| {

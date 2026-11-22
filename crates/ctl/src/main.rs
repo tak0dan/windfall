@@ -1,6 +1,6 @@
+use std::io::{BufRead, BufReader};
 use windfall_core::config::{BarMode, Effect, Element, Patch, Renderer};
 use windfall_core::ipc::{self, Request, Response};
-use std::io::{BufRead, BufReader};
 
 const HELP: &str = "windfallctl - control the running windfalld
 
@@ -37,7 +37,11 @@ fn main() {
 }
 
 fn num(s: Option<&String>, lo: f32, hi: f32) -> Result<f32, String> {
-    let v: f32 = s.ok_or("missing value")?.trim_end_matches('%').parse().map_err(|_| "not a number".to_string())?;
+    let v: f32 = s
+        .ok_or("missing value")?
+        .trim_end_matches('%')
+        .parse()
+        .map_err(|_| "not a number".to_string())?;
     if v < lo || v > hi {
         return Err(format!("{v} is outside {lo}..{hi}"));
     }
@@ -62,22 +66,83 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         "status" => Request::Get,
         "toggle" => Request::Toggle,
-        "on" => set(Patch { enabled: Some(true), ..Default::default() }),
-        "off" => set(Patch { enabled: Some(false), ..Default::default() }),
+        "on" => set(Patch {
+            enabled: Some(true),
+            ..Default::default()
+        }),
+        "off" => set(Patch {
+            enabled: Some(false),
+            ..Default::default()
+        }),
         "clear" => Request::Clear,
         "quit" => Request::Quit,
-        "effect" => set(Patch { effect: Some(args.get(1).and_then(|s| Effect::parse(s)).ok_or("unknown effect")?), ..Default::default() }),
-        "element" => set(Patch { element: Some(args.get(1).and_then(|s| Element::parse(s)).ok_or("unknown element")?), ..Default::default() }),
-        "lights" => set(Patch { lights: Some(args.get(1).map(|v| flag(v)).transpose()?.unwrap_or(true)), ..Default::default() }),
-        "renderer" => set(Patch { renderer: Some(args.get(1).and_then(|s| Renderer::parse(s)).ok_or("unknown renderer")?), ..Default::default() }),
-        "intensity" => set(Patch { intensity: Some(num(args.get(1), 0.0, 100.0)? / 100.0), ..Default::default() }),
-        "opacity" => set(Patch { opacity: Some(num(args.get(1), 10.0, 100.0)? / 100.0), ..Default::default() }),
-        "pixel-size" => set(Patch { pixel_size: Some(num(args.get(1), 1.0, 10.0)? as u32), ..Default::default() }),
-        "bars" => set(Patch { bar_mode: Some(args.get(1).and_then(|s| BarMode::parse(s)).ok_or("expected visible or whole")?), ..Default::default() }),
-        "glow" => set(Patch { glow_color: Some(args.get(1).filter(|c| windfall_core::palette::parse_hex(c).is_some()).ok_or("expected a colour like #ffd84d")?.clone()), ..Default::default() }),
+        "effect" => set(Patch {
+            effect: Some(
+                args.get(1)
+                    .and_then(|s| Effect::parse(s))
+                    .ok_or("unknown effect")?,
+            ),
+            ..Default::default()
+        }),
+        "element" => set(Patch {
+            element: Some(
+                args.get(1)
+                    .and_then(|s| Element::parse(s))
+                    .ok_or("unknown element")?,
+            ),
+            ..Default::default()
+        }),
+        "lights" => set(Patch {
+            lights: Some(args.get(1).map(|v| flag(v)).transpose()?.unwrap_or(true)),
+            ..Default::default()
+        }),
+        "renderer" => set(Patch {
+            renderer: Some(
+                args.get(1)
+                    .and_then(|s| Renderer::parse(s))
+                    .ok_or("unknown renderer")?,
+            ),
+            ..Default::default()
+        }),
+        "intensity" => set(Patch {
+            intensity: Some(num(args.get(1), 0.0, 100.0)? / 100.0),
+            ..Default::default()
+        }),
+        "opacity" => set(Patch {
+            opacity: Some(num(args.get(1), 10.0, 100.0)? / 100.0),
+            ..Default::default()
+        }),
+        "pixel-size" => set(Patch {
+            pixel_size: Some(num(args.get(1), 1.0, 10.0)? as u32),
+            ..Default::default()
+        }),
+        "bars" => set(Patch {
+            bar_mode: Some(
+                args.get(1)
+                    .and_then(|s| BarMode::parse(s))
+                    .ok_or("expected visible or whole")?,
+            ),
+            ..Default::default()
+        }),
+        "glow" => set(Patch {
+            glow_color: Some(
+                args.get(1)
+                    .filter(|c| windfall_core::palette::parse_hex(c).is_some())
+                    .ok_or("expected a colour like #ffd84d")?
+                    .clone(),
+            ),
+            ..Default::default()
+        }),
         "color" | "colour" => {
-            let which = args.get(1).map(String::as_str).ok_or("usage: color <hearts|comets|lights|flowers> <#rrggbb>")?;
-            let hex = args.get(2).filter(|c| windfall_core::palette::parse_hex(c).is_some()).ok_or("expected a colour like #ff7399")?.clone();
+            let which = args
+                .get(1)
+                .map(String::as_str)
+                .ok_or("usage: color <hearts|comets|lights|flowers> <#rrggbb>")?;
+            let hex = args
+                .get(2)
+                .filter(|c| windfall_core::palette::parse_hex(c).is_some())
+                .ok_or("expected a colour like #ff7399")?
+                .clone();
             let mut p = Patch::default();
             match which {
                 "hearts" => p.hearts_color = Some(hex),
@@ -91,7 +156,10 @@ fn run(args: &[String]) -> Result<(), String> {
             }
             set(p)
         }
-        "wind" => set(Patch { wind: Some(num(args.get(1), -100.0, 100.0)? / 100.0), ..Default::default() }),
+        "wind" => set(Patch {
+            wind: Some(num(args.get(1), -100.0, 100.0)? / 100.0),
+            ..Default::default()
+        }),
         "set" => {
             let mut p = Patch::default();
             for kv in &args[1..] {
@@ -129,8 +197,19 @@ fn run(args: &[String]) -> Result<(), String> {
                     println!("{}", serde_json::to_string_pretty(&state).unwrap());
                 } else {
                     let c = &state.config;
-                    println!("windfalld {} on {}", state.version, state.monitors.join(", "));
-                    println!("{}  {} / {}  intensity {:.0}%  opacity {:.0}%", if c.enabled { "on " } else { "off" }, c.effect.title(), c.renderer.title(), c.intensity * 100.0, c.opacity * 100.0);
+                    println!(
+                        "windfalld {} on {}",
+                        state.version,
+                        state.monitors.join(", ")
+                    );
+                    println!(
+                        "{}  {} / {}  intensity {:.0}%  opacity {:.0}%",
+                        if c.enabled { "on " } else { "off" },
+                        c.effect.title(),
+                        c.renderer.title(),
+                        c.intensity * 100.0,
+                        c.opacity * 100.0
+                    );
                 }
             }
             Ok(())

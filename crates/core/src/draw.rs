@@ -16,7 +16,8 @@ impl Batch {
     }
     #[inline]
     fn v(&mut self, x: f32, y: f32, u: f32, v: f32, c: [f32; 4]) {
-        self.data.extend_from_slice(&[x, y, u, v, c[0], c[1], c[2], c[3]]);
+        self.data
+            .extend_from_slice(&[x, y, u, v, c[0], c[1], c[2], c[3]]);
     }
 
     pub fn tri(&mut self, a: [f32; 2], b: [f32; 2], c: [f32; 2], col: [f32; 4]) {
@@ -44,7 +45,12 @@ impl Batch {
             let py = uy * ry;
             (x + px * c - py * s, y + px * s + py * c, ux, uy)
         };
-        let q = [corner(-1.0, -1.0), corner(1.0, -1.0), corner(-1.0, 1.0), corner(1.0, 1.0)];
+        let q = [
+            corner(-1.0, -1.0),
+            corner(1.0, -1.0),
+            corner(-1.0, 1.0),
+            corner(1.0, 1.0),
+        ];
         for &i in &[0usize, 1, 2, 1, 3, 2] {
             self.v(q[i].0, q[i].1, q[i].2, q[i].3, col);
         }
@@ -64,7 +70,12 @@ impl Batch {
         let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
         let len = (dx * dx + dy * dy).sqrt().max(1e-4);
         let (nx, ny) = (-dy / len * width * 0.5, dx / len * width * 0.5);
-        let p = [[a[0] + nx, a[1] + ny], [a[0] - nx, a[1] - ny], [b[0] + nx, b[1] + ny], [b[0] - nx, b[1] - ny]];
+        let p = [
+            [a[0] + nx, a[1] + ny],
+            [a[0] - nx, a[1] - ny],
+            [b[0] + nx, b[1] + ny],
+            [b[0] - nx, b[1] - ny],
+        ];
         self.tri(p[0], p[1], p[2], col);
         self.tri(p[1], p[3], p[2], col);
     }
@@ -77,7 +88,12 @@ impl Batch {
             let c = at(sx * s, -0.25 * s);
             self.disc(c[0], c[1], 0.56 * s, col);
         }
-        self.tri(at(-1.04 * s, -0.08 * s), at(1.04 * s, -0.08 * s), at(0.0, 1.12 * s), col);
+        self.tri(
+            at(-1.04 * s, -0.08 * s),
+            at(1.04 * s, -0.08 * s),
+            at(0.0, 1.12 * s),
+            col,
+        );
         let h = at(-0.55 * s, -0.4 * s);
         self.disc(h[0], h[1], 0.16 * s, [1.0, 1.0, 1.0, col[3] * 0.7]);
     }

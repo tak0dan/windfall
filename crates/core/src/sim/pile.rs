@@ -19,7 +19,14 @@ pub struct Pile {
 impl Pile {
     pub fn new(x0: f32, width: f32, base: f32) -> Pile {
         let n = ((width / CELL).ceil() as usize).max(1);
-        Pile { x0, base, h: vec![0.0; n], c: vec![0; n], age: 0.0, dormant: false }
+        Pile {
+            x0,
+            base,
+            h: vec![0.0; n],
+            c: vec![0; n],
+            age: 0.0,
+            dormant: false,
+        }
     }
     pub fn width(&self) -> f32 {
         self.h.len() as f32 * CELL
@@ -62,7 +69,11 @@ impl Pile {
             let mut p = Pile::new(me.x0 + from as f32 * CELL, (t - f) as f32 * CELL, me.base);
             p.h.copy_from_slice(&me.h[f..t]);
             p.c.copy_from_slice(&me.c[f..t]);
-            if p.total() > 0.3 { Some(p) } else { None }
+            if p.total() > 0.3 {
+                Some(p)
+            } else {
+                None
+            }
         };
         cut.extend(piece(0, ia, self));
         cut.extend(piece(ib, n, self));
@@ -99,7 +110,13 @@ impl Pile {
         let f = (x - self.x0) / CELL - 0.5;
         let i = f.floor();
         let t = f - i;
-        let get = |k: i32| if k < 0 || k as usize >= self.h.len() { 0.0 } else { self.h[k as usize] };
+        let get = |k: i32| {
+            if k < 0 || k as usize >= self.h.len() {
+                0.0
+            } else {
+                self.h[k as usize]
+            }
+        };
         get(i as i32) * (1.0 - t) + get(i as i32 + 1) * t
     }
     pub fn add(&mut self, x: f32, amount: f32, col: u8, cap: f32) {
@@ -182,8 +199,16 @@ impl Pile {
         let n = self.h.len();
         for i in 0..n {
             let (h0, h1) = (self.h[i], if i + 1 < n { self.h[i + 1] } else { 0.0 });
-            let h0 = if i == 0 { h0 } else { (h0 + self.h[i - 1]) * 0.5 };
-            let h1 = if i + 1 < n { (h1 + self.h[i]) * 0.5 } else { 0.0 };
+            let h0 = if i == 0 {
+                h0
+            } else {
+                (h0 + self.h[i - 1]) * 0.5
+            };
+            let h1 = if i + 1 < n {
+                (h1 + self.h[i]) * 0.5
+            } else {
+                0.0
+            };
             if h0 < 0.15 && h1 < 0.15 {
                 continue;
             }
@@ -196,7 +221,11 @@ impl Pile {
                 col = [col[0] * 0.88, col[1] * 0.88, col[2] * 0.88];
             }
             let top = [col[0], col[1], col[2], 1.0];
-            let deep = if effect == Effect::Snow { [0.80, 0.88, 0.97, 1.0] } else { [col[0] * 0.7, col[1] * 0.7, col[2] * 0.7, 1.0] };
+            let deep = if effect == Effect::Snow {
+                [0.80, 0.88, 0.97, 1.0]
+            } else {
+                [col[0] * 0.7, col[1] * 0.7, col[2] * 0.7, 1.0]
+            };
             if effect != Effect::Snow {
                 self.draw_litter(b, effect, i, x, h0, h1, colors);
                 continue;
@@ -205,22 +234,39 @@ impl Pile {
             // Slightly below the surface edge so no seam shows between pile and the thing it sits on.
             let by = self.base + 1.0;
             if pixel {
-                b.quad4([[x, y0], [x + CELL, y1], [x, by], [x + CELL, by]], [top, top, top, top]);
+                b.quad4(
+                    [[x, y0], [x + CELL, y1], [x, by], [x + CELL, by]],
+                    [top, top, top, top],
+                );
             } else {
-                b.quad4([[x, y0], [x + CELL, y1], [x, by], [x + CELL, by]], [top, top, deep, deep]);
+                b.quad4(
+                    [[x, y0], [x + CELL, y1], [x, by], [x + CELL, by]],
+                    [top, top, deep, deep],
+                );
             }
         }
     }
 
     /// Leaves and petals lie in a heap. The body is a smooth two-dimensional mottling (colour drifts in both
     /// directions, so nothing reads as a vertical stripe) with individual leaves lying on and in it.
-    fn draw_litter(&self, b: &mut Batch, effect: Effect, i: usize, x: f32, h0: f32, h1: f32, colors: &[[f32; 3]]) {
+    fn draw_litter(
+        &self,
+        b: &mut Batch,
+        effect: Effect,
+        i: usize,
+        x: f32,
+        h0: f32,
+        h1: f32,
+        colors: &[[f32; 3]],
+    ) {
         const BAND: f32 = 4.0;
         let n = colors.len();
         let total = h0.max(h1).max(1.0);
         // Colour at a point: value noise picks along the palette; deeper is darker.
         let tint = |px: f32, py: f32| -> [f32; 4] {
-            let v = (0.62 * vnoise(px / 7.0, py / 6.0) + 0.38 * vnoise(px / 3.1 + 17.0, py / 2.7 + 5.0)).clamp(0.0, 0.999);
+            let v = (0.62 * vnoise(px / 7.0, py / 6.0)
+                + 0.38 * vnoise(px / 3.1 + 17.0, py / 2.7 + 5.0))
+            .clamp(0.0, 0.999);
             let t = v * (n - 1) as f32;
             let (a, f) = (t.floor() as usize, t.fract());
             let c = palette_mix(colors[a], colors[(a + 1).min(n - 1)], f);
@@ -230,15 +276,43 @@ impl Pile {
         };
         let full = ((h0.min(h1)) / BAND).floor() as usize;
         for k in 0..full {
-            let (yb, yt) = (self.base + 1.0 - k as f32 * BAND, self.base - (k + 1) as f32 * BAND);
-            b.quad4([[x, yt], [x + CELL, yt], [x, yb], [x + CELL, yb]], [tint(x, yt), tint(x + CELL, yt), tint(x, yb), tint(x + CELL, yb)]);
+            let (yb, yt) = (
+                self.base + 1.0 - k as f32 * BAND,
+                self.base - (k + 1) as f32 * BAND,
+            );
+            b.quad4(
+                [[x, yt], [x + CELL, yt], [x, yb], [x + CELL, yb]],
+                [
+                    tint(x, yt),
+                    tint(x + CELL, yt),
+                    tint(x, yb),
+                    tint(x + CELL, yb),
+                ],
+            );
         }
         let yb = self.base + 1.0 - full as f32 * BAND;
         let (yl, yr) = (self.base - h0, self.base - h1);
-        b.quad4([[x, yl], [x + CELL, yr], [x, yb], [x + CELL, yb]], [tint(x, yl), tint(x + CELL, yr), tint(x, yb), tint(x + CELL, yb)]);
+        b.quad4(
+            [[x, yl], [x + CELL, yr], [x, yb], [x + CELL, yb]],
+            [
+                tint(x, yl),
+                tint(x + CELL, yr),
+                tint(x, yb),
+                tint(x + CELL, yb),
+            ],
+        );
         // Single leaves or petals lying on and in the heap, placed by hash so they stay put as it grows.
-        let (rx, ry) = if effect == Effect::Leaves { (3.4, 1.5) } else { (2.3, 1.2) };
-        let hash = |a: usize, c: usize| -> f32 { ((a.wrapping_mul(73_856_093) ^ c.wrapping_mul(19_349_663)).wrapping_mul(2_654_435_761) >> 8 & 0xffff) as f32 / 65535.0 };
+        let (rx, ry) = if effect == Effect::Leaves {
+            (3.4, 1.5)
+        } else {
+            (2.3, 1.2)
+        };
+        let hash = |a: usize, c: usize| -> f32 {
+            ((a.wrapping_mul(73_856_093) ^ c.wrapping_mul(19_349_663)).wrapping_mul(2_654_435_761)
+                >> 8
+                & 0xffff) as f32
+                / 65535.0
+        };
         for k in 0..=full {
             if hash(i, k * 7 + 1) > 0.55 {
                 continue;
@@ -252,14 +326,23 @@ impl Pile {
             let rot = hash(i, k * 7 + 4) * std::f32::consts::PI;
             let mut c = tint(cx, cy);
             let lift = 0.82 + 0.4 * hash(i, k * 7 + 5);
-            c = [(c[0] * lift).min(1.0), (c[1] * lift).min(1.0), (c[2] * lift).min(1.0), 1.0];
+            c = [
+                (c[0] * lift).min(1.0),
+                (c[1] * lift).min(1.0),
+                (c[2] * lift).min(1.0),
+                1.0,
+            ];
             b.ellipse(cx, cy, rx * (0.7 + 0.5 * hash(i, k * 7 + 6)), ry, rot, c);
         }
     }
 }
 
 fn palette_mix(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
-    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
 }
 
 /// Smooth value noise in 0..1.
@@ -267,7 +350,8 @@ fn vnoise(x: f32, y: f32) -> f32 {
     let (xi, yi) = (x.floor(), y.floor());
     let (xf, yf) = (x - xi, y - yi);
     let h = |a: i32, c: i32| -> f32 {
-        let n = (a.wrapping_mul(374_761_393) ^ c.wrapping_mul(668_265_263)).wrapping_mul(1_274_126_177);
+        let n =
+            (a.wrapping_mul(374_761_393) ^ c.wrapping_mul(668_265_263)).wrapping_mul(1_274_126_177);
         ((n >> 8) & 0xffff) as f32 / 65535.0
     };
     let (xi, yi) = (xi as i32, yi as i32);

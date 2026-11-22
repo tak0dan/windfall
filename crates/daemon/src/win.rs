@@ -41,14 +41,21 @@ fn wide(s: &str) -> Vec<u16> {
 fn log(line: &str) {
     if let Some(dir) = windfall_core::ipc::port_path().parent() {
         let _ = std::fs::create_dir_all(dir);
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("windfalld.log")) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("windfalld.log"))
+        {
             let _ = writeln!(f, "{line}");
         }
     }
 }
 
 enum Msg {
-    Ipc { req: Request, reply: mpsc::Sender<Response> },
+    Ipc {
+        req: Request,
+        reply: mpsc::Sender<Response>,
+    },
 }
 
 struct Overlay {
@@ -120,18 +127,59 @@ pub fn main() {
         };
         let hinst = GetModuleHandleW(null());
         let class = wide("WindfallMessages");
-        let wc = WNDCLASSW { style: 0, lpfnWndProc: Some(msg_proc), cbClsExtra: 0, cbWndExtra: 0, hInstance: hinst, hIcon: null_mut(), hCursor: null_mut(), hbrBackground: null_mut(), lpszMenuName: null(), lpszClassName: class.as_ptr() };
+        let wc = WNDCLASSW {
+            style: 0,
+            lpfnWndProc: Some(msg_proc),
+            cbClsExtra: 0,
+            cbWndExtra: 0,
+            hInstance: hinst,
+            hIcon: null_mut(),
+            hCursor: null_mut(),
+            hbrBackground: null_mut(),
+            lpszMenuName: null(),
+            lpszClassName: class.as_ptr(),
+        };
         RegisterClassW(&wc);
-        let hwnd = CreateWindowExW(0, class.as_ptr(), wide("Windfall").as_ptr(), 0, 0, 0, 0, 0, HWND_MESSAGE, null_mut(), hinst, null());
+        let hwnd = CreateWindowExW(
+            0,
+            class.as_ptr(),
+            wide("Windfall").as_ptr(),
+            0,
+            0,
+            0,
+            0,
+            0,
+            HWND_MESSAGE,
+            null_mut(),
+            hinst,
+            null(),
+        );
         if hwnd.is_null() {
             log("no message window");
             return;
         }
         MSG_HWND.store(hwnd as isize, Ordering::SeqCst);
         let config = Config::load();
-        let (g, size) = windfall_core::icon::glyph(config.effect, config.renderer == Renderer::Pixel, config.enabled);
+        let (g, size) = windfall_core::icon::glyph(
+            config.effect,
+            config.renderer == Renderer::Pixel,
+            config.enabled,
+        );
         let icon = make_icon(&g, size);
-        let mut app = App { config, overlays: Vec::new(), scenes: Vec::new(), rx, port, batch: Batch::default(), last: Instant::now(), scene_at: Instant::now() - Duration::from_secs(1), logged: Instant::now(), hwnd, icon, quit: false };
+        let mut app = App {
+            config,
+            overlays: Vec::new(),
+            scenes: Vec::new(),
+            rx,
+            port,
+            batch: Batch::default(),
+            last: Instant::now(),
+            scene_at: Instant::now() - Duration::from_secs(1),
+            logged: Instant::now(),
+            hwnd,
+            icon,
+            quit: false,
+        };
         register_overlay_class(hinst);
         create_overlays(&mut app);
         tray_add(&app);
@@ -212,7 +260,18 @@ unsafe extern "system" fn overlay_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPA
 
 unsafe fn register_overlay_class(hinst: HINSTANCE) {
     let class = wide("WindfallOverlay");
-    let wc = WNDCLASSW { style: 0, lpfnWndProc: Some(overlay_proc), cbClsExtra: 0, cbWndExtra: 0, hInstance: hinst, hIcon: null_mut(), hCursor: null_mut(), hbrBackground: null_mut(), lpszMenuName: null(), lpszClassName: class.as_ptr() };
+    let wc = WNDCLASSW {
+        style: 0,
+        lpfnWndProc: Some(overlay_proc),
+        cbClsExtra: 0,
+        cbWndExtra: 0,
+        hInstance: hinst,
+        hIcon: null_mut(),
+        hCursor: null_mut(),
+        hbrBackground: null_mut(),
+        lpszMenuName: null(),
+        lpszClassName: class.as_ptr(),
+    };
     RegisterClassW(&wc);
 }
 
@@ -225,16 +284,30 @@ unsafe extern "system" fn monitor_cb(hmon: HMONITOR, _: HDC, _: *mut RECT, lp: L
     }
     let (mut dx, mut dy) = (96u32, 96u32);
     GetDpiForMonitor(hmon, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
-    let len = mi.szDevice.iter().position(|&c| c == 0).unwrap_or(mi.szDevice.len());
+    let len = mi
+        .szDevice
+        .iter()
+        .position(|&c| c == 0)
+        .unwrap_or(mi.szDevice.len());
     let r = mi.monitorInfo.rcMonitor;
     let w = mi.monitorInfo.rcWork;
-    list.push(MonInfo { name: String::from_utf16_lossy(&mi.szDevice[..len]), rect: [r.left, r.top, r.right, r.bottom], work: [w.left, w.top, w.right, w.bottom], scale: (dx.max(96) as f32) / 96.0 });
+    list.push(MonInfo {
+        name: String::from_utf16_lossy(&mi.szDevice[..len]),
+        rect: [r.left, r.top, r.right, r.bottom],
+        work: [w.left, w.top, w.right, w.bottom],
+        scale: (dx.max(96) as f32) / 96.0,
+    });
     1
 }
 
 unsafe fn monitors() -> Vec<MonInfo> {
     let mut v: Vec<MonInfo> = Vec::new();
-    EnumDisplayMonitors(null_mut(), null(), Some(monitor_cb), &mut v as *mut Vec<MonInfo> as LPARAM);
+    EnumDisplayMonitors(
+        null_mut(),
+        null(),
+        Some(monitor_cb),
+        &mut v as *mut Vec<MonInfo> as LPARAM,
+    );
     v
 }
 
@@ -242,8 +315,26 @@ unsafe fn create_overlays(app: &mut App) {
     let hinst = GetModuleHandleW(null());
     let class = wide("WindfallOverlay");
     for m in monitors() {
-        let (x, y, w, h) = (m.rect[0], m.rect[1], m.rect[2] - m.rect[0], m.rect[3] - m.rect[1]);
-        let hwnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, class.as_ptr(), wide("Windfall overlay").as_ptr(), WS_POPUP, x, y, w, h, null_mut(), null_mut(), hinst, null());
+        let (x, y, w, h) = (
+            m.rect[0],
+            m.rect[1],
+            m.rect[2] - m.rect[0],
+            m.rect[3] - m.rect[1],
+        );
+        let hwnd = CreateWindowExW(
+            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            class.as_ptr(),
+            wide("Windfall overlay").as_ptr(),
+            WS_POPUP,
+            x,
+            y,
+            w,
+            h,
+            null_mut(),
+            null_mut(),
+            hinst,
+            null(),
+        );
         if hwnd.is_null() {
             log("could not create an overlay");
             continue;
@@ -262,7 +353,20 @@ unsafe fn create_overlays(app: &mut App) {
         SelectObject(mem, dib);
         ReleaseDC(null_mut(), screen);
         let seed = (hwnd as usize as u64).wrapping_mul(7919) ^ 0x5eed;
-        app.overlays.push(Overlay { hwnd, name: m.name.clone(), rect: [x, y, w, h], scale: m.scale, lw: w as f32 / m.scale, lh: h as f32 / m.scale, mem, dib, bits: bits as *mut u8, small: Vec::new(), world: World::new(seed), shown: false });
+        app.overlays.push(Overlay {
+            hwnd,
+            name: m.name.clone(),
+            rect: [x, y, w, h],
+            scale: m.scale,
+            lw: w as f32 / m.scale,
+            lh: h as f32 / m.scale,
+            mem,
+            dib,
+            bits: bits as *mut u8,
+            small: Vec::new(),
+            world: World::new(seed),
+            shown: false,
+        });
     }
     log(&format!("{} overlay(s)", app.overlays.len()));
 }
@@ -315,7 +419,12 @@ unsafe extern "system" fn enum_cb(hwnd: HWND, lp: LPARAM) -> BOOL {
         return 1;
     }
     let mut cloaked: u32 = 0;
-    DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED as u32, &mut cloaked as *mut u32 as *mut c_void, 4);
+    DwmGetWindowAttribute(
+        hwnd,
+        DWMWA_CLOAKED as u32,
+        &mut cloaked as *mut u32 as *mut c_void,
+        4,
+    );
     if cloaked != 0 || GetWindowTextLengthW(hwnd) == 0 {
         return 1;
     }
@@ -323,10 +432,20 @@ unsafe extern "system" fn enum_cb(hwnd: HWND, lp: LPARAM) -> BOOL {
         return 1;
     }
     let mut r: RECT = std::mem::zeroed();
-    if DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS as u32, &mut r as *mut RECT as *mut c_void, std::mem::size_of::<RECT>() as u32) != 0 {
+    if DwmGetWindowAttribute(
+        hwnd,
+        DWMWA_EXTENDED_FRAME_BOUNDS as u32,
+        &mut r as *mut RECT as *mut c_void,
+        std::mem::size_of::<RECT>() as u32,
+    ) != 0
+    {
         GetWindowRect(hwnd, &mut r);
     }
-    v.push(Win { hwnd, r: [r.left, r.top, r.right, r.bottom], zoomed: IsZoomed(hwnd) != 0 });
+    v.push(Win {
+        hwnd,
+        r: [r.left, r.top, r.right, r.bottom],
+        zoomed: IsZoomed(hwnd) != 0,
+    });
     1
 }
 
@@ -348,18 +467,35 @@ unsafe fn read_scenes() -> Vec<(String, Scene, bool)> {
     let mut out = Vec::new();
     for m in &mons {
         let (mx, my) = (m.rect[0], m.rect[1]);
-        let (lw, lh) = ((m.rect[2] - mx) as f32 / m.scale, (m.rect[3] - my) as f32 / m.scale);
+        let (lw, lh) = (
+            (m.rect[2] - mx) as f32 / m.scale,
+            (m.rect[3] - my) as f32 / m.scale,
+        );
         let mut surfs = Vec::new();
         // The taskbar (or the bottom of the work area) is the ground.
         let ground = (m.work[3] - my) as f32 / m.scale;
-        surfs.push(Surf { id: 1, rect: Rect::new(0.0, ground, lw, 4000.0), z: -1, kind: SurfKind::Ground, inset: 0.0, group: 0, shown: true });
+        surfs.push(Surf {
+            id: 1,
+            rect: Rect::new(0.0, ground, lw, 4000.0),
+            z: -1,
+            kind: SurfKind::Ground,
+            inset: 0.0,
+            group: 0,
+            shown: true,
+        });
         for (i, w) in wins.iter().enumerate() {
             let (cx, cy) = ((w.r[0] + w.r[2]) / 2, (w.r[1] + w.r[3]) / 2);
             if cx < m.rect[0] || cx >= m.rect[2] || cy < m.rect[1] || cy >= m.rect[3] {
                 continue;
             }
-            let (x, y) = ((w.r[0] - mx) as f32 / m.scale, (w.r[1] - my) as f32 / m.scale);
-            let (ww, wh) = ((w.r[2] - w.r[0]) as f32 / m.scale, (w.r[3] - w.r[1]) as f32 / m.scale);
+            let (x, y) = (
+                (w.r[0] - mx) as f32 / m.scale,
+                (w.r[1] - my) as f32 / m.scale,
+            );
+            let (ww, wh) = (
+                (w.r[2] - w.r[0]) as f32 / m.scale,
+                (w.r[3] - w.r[1]) as f32 / m.scale,
+            );
             if y < 20.0 || ww < 48.0 || wh < 24.0 {
                 continue;
             }
@@ -368,14 +504,31 @@ unsafe fn read_scenes() -> Vec<(String, Scene, bool)> {
                 rect: Rect::new(x, y - 1.0, ww, wh),
                 z: 500 - (i as i32).min(480),
                 kind: SurfKind::Window,
-                inset: if w.zoomed { 0.0 } else { (8.0f32).min(ww / 3.0) },
+                inset: if w.zoomed {
+                    0.0
+                } else {
+                    (8.0f32).min(ww / 3.0)
+                },
                 group: 0,
                 shown: true,
             });
         }
-        let cursor = (cur.x >= m.rect[0] && cur.x < m.rect[2] && cur.y >= m.rect[1] && cur.y < m.rect[3]).then(|| [(cur.x - mx) as f32 / m.scale, (cur.y - my) as f32 / m.scale]);
-        let fullscreen = fg_rect.is_some_and(|r| r[0] <= m.rect[0] && r[1] <= m.rect[1] && r[2] >= m.rect[2] && r[3] >= m.rect[3]);
-        out.push((m.name.clone(), Scene { w: lw, h: lh, surfs, cursor }, fullscreen));
+        let cursor =
+            (cur.x >= m.rect[0] && cur.x < m.rect[2] && cur.y >= m.rect[1] && cur.y < m.rect[3])
+                .then(|| [(cur.x - mx) as f32 / m.scale, (cur.y - my) as f32 / m.scale]);
+        let fullscreen = fg_rect.is_some_and(|r| {
+            r[0] <= m.rect[0] && r[1] <= m.rect[1] && r[2] >= m.rect[2] && r[3] >= m.rect[3]
+        });
+        out.push((
+            m.name.clone(),
+            Scene {
+                w: lw,
+                h: lh,
+                surfs,
+                cursor,
+            },
+            fullscreen,
+        ));
     }
     out
 }
@@ -393,7 +546,11 @@ fn params(c: &Config) -> Params {
         windows: c.windows,
         layers: false,
         pixel: c.renderer == Renderer::Pixel,
-        pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
+        pixel_size: if c.renderer == Renderer::Pixel {
+            c.pixel_size as f32
+        } else {
+            0.0
+        },
         glow: windfall_core::config::glow_for(c),
         element: c.element,
         lights: c.lights,
@@ -411,12 +568,19 @@ fn tick(app: &mut App) {
     app.last = now;
     if now.duration_since(app.scene_at) >= Duration::from_millis(33) && app.config.drawing() {
         app.scene_at = now;
-        app.scenes = unsafe { read_scenes() }.into_iter().map(|(_, s, f)| (s, f)).collect::<Vec<_>>();
+        app.scenes = unsafe { read_scenes() }
+            .into_iter()
+            .map(|(_, s, f)| (s, f))
+            .collect::<Vec<_>>();
     }
     if now.duration_since(app.logged) >= Duration::from_secs(5) {
         app.logged = now;
         for (i, (sc, fs)) in app.scenes.iter().enumerate() {
-            let ground = sc.surfs.iter().find(|s| s.kind == SurfKind::Ground).map(|s| s.rect.y);
+            let ground = sc
+                .surfs
+                .iter()
+                .find(|s| s.kind == SurfKind::Ground)
+                .map(|s| s.rect.y);
             log(&format!("scene {i}: {}x{} surfaces={} ground={ground:?} fullscreen={fs} shown={:?} parts={}", sc.w, sc.h, sc.surfs.len(), app.overlays.get(i).map(|o| o.shown), app.overlays.get(i).map_or(0, |o| o.world.particle_count())));
         }
     }
@@ -427,7 +591,11 @@ fn tick(app: &mut App) {
         SetTimer(app.hwnd, TIMER_FRAME, interval, None);
     }
     for (i, ov) in app.overlays.iter_mut().enumerate() {
-        let want = app.config.drawing() && app.scenes.get(i).is_some_and(|(_, fs)| app.config.over_fullscreen || !fs);
+        let want = app.config.drawing()
+            && app
+                .scenes
+                .get(i)
+                .is_some_and(|(_, fs)| app.config.over_fullscreen || !fs);
         if !want {
             if ov.shown {
                 unsafe { ShowWindow(ov.hwnd, SW_HIDE) };
@@ -463,7 +631,14 @@ fn present(ov: &mut Overlay, batch: &[f32], c: &Config) {
             ov.small.clear();
             ov.small.resize(sw * sh * 4, 0);
             let k = 1.0 / c.pixel_size as f32;
-            Raster { buf: &mut ov.small, w: sw as i32, h: sh as i32, aa: false, opacity: 1.0 }.batch(batch, k, k);
+            Raster {
+                buf: &mut ov.small,
+                w: sw as i32,
+                h: sh as i32,
+                aa: false,
+                opacity: 1.0,
+            }
+            .batch(batch, k, k);
             let levels = (c.pixel_levels.max(2) - 1) as f32;
             for y in 0..h {
                 for x in 0..w {
@@ -477,7 +652,11 @@ fn present(ov: &mut Overlay, batch: &[f32], c: &Config) {
                     // A few steps of transparency, so soft rims stay see-through.
                     let af = a as f32 / 255.0;
                     let aq = ((af * 4.0 + 0.5).floor() / 4.0).max(0.25) * c.opacity;
-                    let q = |v: u8| ((((v as f32 / 255.0) / af).clamp(0.0, 1.0) * levels).round() / levels * aq * 255.0) as u8;
+                    let q = |v: u8| {
+                        ((((v as f32 / 255.0) / af).clamp(0.0, 1.0) * levels).round() / levels
+                            * aq
+                            * 255.0) as u8
+                    };
                     let al = (aq * 255.0) as u8;
                     dst[o] = q(ov.small[si]);
                     dst[o + 1] = q(ov.small[si + 1]);
@@ -487,20 +666,52 @@ fn present(ov: &mut Overlay, batch: &[f32], c: &Config) {
             }
         } else {
             dst.fill(0);
-            Raster { buf: dst, w: w as i32, h: h as i32, aa: true, opacity: c.opacity }.batch(batch, ov.scale, ov.scale);
+            Raster {
+                buf: dst,
+                w: w as i32,
+                h: h as i32,
+                aa: true,
+                opacity: c.opacity,
+            }
+            .batch(batch, ov.scale, ov.scale);
         }
-        let size = SIZE { cx: w as i32, cy: h as i32 };
+        let size = SIZE {
+            cx: w as i32,
+            cy: h as i32,
+        };
         let src = POINT { x: 0, y: 0 };
-        let pos = POINT { x: ov.rect[0], y: ov.rect[1] };
-        let blend = BLENDFUNCTION { BlendOp: AC_SRC_OVER as u8, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: AC_SRC_ALPHA as u8 };
-        UpdateLayeredWindow(ov.hwnd, null_mut(), &pos, &size, ov.mem, &src, 0, &blend, ULW_ALPHA);
+        let pos = POINT {
+            x: ov.rect[0],
+            y: ov.rect[1],
+        };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        UpdateLayeredWindow(
+            ov.hwnd,
+            null_mut(),
+            &pos,
+            &size,
+            ov.mem,
+            &src,
+            0,
+            &blend,
+            ULW_ALPHA,
+        );
     }
 }
 
 // ------------------------------------------------------------------------------------------------ control
 
 fn state(app: &App) -> State {
-    State { config: app.config.clone(), version: env!("CARGO_PKG_VERSION").into(), monitors: app.overlays.iter().map(|o| o.name.clone()).collect() }
+    State {
+        config: app.config.clone(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        monitors: app.overlays.iter().map(|o| o.name.clone()).collect(),
+    }
 }
 
 fn drain(app: &mut App) {
@@ -512,7 +723,13 @@ fn drain(app: &mut App) {
                     Request::Set { patch } => apply(app, &patch),
                     Request::Toggle => {
                         let on = !app.config.enabled;
-                        apply(app, &Patch { enabled: Some(on), ..Default::default() });
+                        apply(
+                            app,
+                            &Patch {
+                                enabled: Some(on),
+                                ..Default::default()
+                            },
+                        );
                     }
                     Request::Clear => app.overlays.iter_mut().for_each(|o| o.world.clear()),
                     Request::Quit => app.quit = true,
@@ -526,7 +743,11 @@ fn drain(app: &mut App) {
 fn apply(app: &mut App, patch: &Patch) {
     if app.config.apply(patch) {
         let _ = app.config.save();
-        let (g, size) = windfall_core::icon::glyph(app.config.effect, app.config.renderer == Renderer::Pixel, app.config.enabled);
+        let (g, size) = windfall_core::icon::glyph(
+            app.config.effect,
+            app.config.renderer == Renderer::Pixel,
+            app.config.enabled,
+        );
         unsafe {
             let old = app.icon;
             app.icon = make_icon(&g, size);
@@ -544,30 +765,39 @@ fn start_server(tx: mpsc::Sender<Msg>) -> std::io::Result<u16> {
         std::fs::create_dir_all(dir)?;
     }
     std::fs::write(&path, port.to_string())?;
-    std::thread::Builder::new().name("control".into()).spawn(move || {
-        for stream in listener.incoming().flatten() {
-            let tx = tx.clone();
-            std::thread::spawn(move || serve(stream, tx, port));
-        }
-    })?;
+    std::thread::Builder::new()
+        .name("control".into())
+        .spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let tx = tx.clone();
+                std::thread::spawn(move || serve(stream, tx, port));
+            }
+        })?;
     Ok(port)
 }
 
 fn ask(tx: &mpsc::Sender<Msg>, req: Request) -> Response {
     let (rtx, rrx) = mpsc::channel();
     if tx.send(Msg::Ipc { req, reply: rtx }).is_err() {
-        return Response::Error { message: "daemon gone".into() };
+        return Response::Error {
+            message: "daemon gone".into(),
+        };
     }
     let hwnd = MSG_HWND.load(Ordering::SeqCst);
     unsafe {
         PostMessageW(hwnd as HWND, WM_WAKE, 0, 0);
     }
-    rrx.recv_timeout(Duration::from_secs(2)).unwrap_or(Response::Error { message: "daemon busy".into() })
+    rrx.recv_timeout(Duration::from_secs(2))
+        .unwrap_or(Response::Error {
+            message: "daemon busy".into(),
+        })
 }
 
 fn serve(stream: TcpStream, tx: mpsc::Sender<Msg>, port: u16) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-    let Ok(mut out) = stream.try_clone() else { return };
+    let Ok(mut out) = stream.try_clone() else {
+        return;
+    };
     let mut r = BufReader::new(stream);
     let mut first = String::new();
     if r.read_line(&mut first).is_err() {
@@ -578,7 +808,9 @@ fn serve(stream: TcpStream, tx: mpsc::Sender<Msg>, port: u16) {
     } else {
         let reply = match serde_json::from_str::<Request>(&first) {
             Ok(req) => ask(&tx, req),
-            Err(e) => Response::Error { message: format!("bad request: {e}") },
+            Err(e) => Response::Error {
+                message: format!("bad request: {e}"),
+            },
         };
         let mut text = serde_json::to_string(&reply).unwrap_or_default();
         text.push('\n');
@@ -586,9 +818,18 @@ fn serve(stream: TcpStream, tx: mpsc::Sender<Msg>, port: u16) {
     }
 }
 
-fn http(first: String, mut r: BufReader<TcpStream>, out: &mut TcpStream, tx: &mpsc::Sender<Msg>, port: u16) {
+fn http(
+    first: String,
+    mut r: BufReader<TcpStream>,
+    out: &mut TcpStream,
+    tx: &mpsc::Sender<Msg>,
+    port: u16,
+) {
     let mut parts = first.split_whitespace();
-    let (method, path) = (parts.next().unwrap_or(""), parts.next().unwrap_or("/").to_string());
+    let (method, path) = (
+        parts.next().unwrap_or(""),
+        parts.next().unwrap_or("/").to_string(),
+    );
     let (mut host, mut len, mut custom) = (String::new(), 0usize, false);
     loop {
         let mut line = String::new();
@@ -621,12 +862,27 @@ fn http(first: String, mut r: BufReader<TcpStream>, out: &mut TcpStream, tx: &mp
     let json = |resp: Response| serde_json::to_vec(&resp).unwrap_or_default();
     match (method, path.as_str()) {
         ("GET", "/") => respond(out, "200 OK", "text/html; charset=utf-8", HTML.as_bytes()),
-        ("GET", "/api/state") => respond(out, "200 OK", "application/json", &json(ask(tx, Request::Get))),
+        ("GET", "/api/state") => respond(
+            out,
+            "200 OK",
+            "application/json",
+            &json(ask(tx, Request::Get)),
+        ),
         ("POST", "/api/set") if custom => match serde_json::from_slice::<Patch>(&body) {
-            Ok(patch) => respond(out, "200 OK", "application/json", &json(ask(tx, Request::Set { patch }))),
+            Ok(patch) => respond(
+                out,
+                "200 OK",
+                "application/json",
+                &json(ask(tx, Request::Set { patch })),
+            ),
             Err(_) => respond(out, "400 Bad Request", "text/plain", b"bad patch"),
         },
-        ("POST", "/api/clear") if custom => respond(out, "200 OK", "application/json", &json(ask(tx, Request::Clear))),
+        ("POST", "/api/clear") if custom => respond(
+            out,
+            "200 OK",
+            "application/json",
+            &json(ask(tx, Request::Clear)),
+        ),
         ("POST", _) => respond(out, "403 Forbidden", "text/plain", b"forbidden"),
         _ => respond(out, "404 Not Found", "text/plain", b"not found"),
     }
@@ -634,12 +890,28 @@ fn http(first: String, mut r: BufReader<TcpStream>, out: &mut TcpStream, tx: &mp
 
 /// Opens the controller page in an app-style Edge window, or in the default browser.
 fn open_controller() {
-    let Ok(port) = windfall_core::ipc::port() else { return };
+    let Ok(port) = windfall_core::ipc::port() else {
+        return;
+    };
     let url = format!("http://127.0.0.1:{port}/");
     unsafe {
-        let r = ShellExecuteW(null_mut(), wide("open").as_ptr(), wide("msedge.exe").as_ptr(), wide(&format!("--app={url} --window-size=520,940")).as_ptr(), null(), SW_SHOWNORMAL);
+        let r = ShellExecuteW(
+            null_mut(),
+            wide("open").as_ptr(),
+            wide("msedge.exe").as_ptr(),
+            wide(&format!("--app={url} --window-size=520,940")).as_ptr(),
+            null(),
+            SW_SHOWNORMAL,
+        );
         if (r as isize) <= 32 {
-            ShellExecuteW(null_mut(), wide("open").as_ptr(), wide(&url).as_ptr(), null(), null(), SW_SHOWNORMAL);
+            ShellExecuteW(
+                null_mut(),
+                wide("open").as_ptr(),
+                wide(&url).as_ptr(),
+                null(),
+                null(),
+                SW_SHOWNORMAL,
+            );
         }
     }
 }
@@ -654,7 +926,13 @@ unsafe fn make_icon(argb: &[u8], size: i32) -> HICON {
     }
     let color = CreateBitmap(size, size, 1, 32, bgra.as_ptr() as *const c_void);
     let mask = CreateBitmap(size, size, 1, 1, null());
-    let ii = ICONINFO { fIcon: 1, xHotspot: 0, yHotspot: 0, hbmMask: mask, hbmColor: color };
+    let ii = ICONINFO {
+        fIcon: 1,
+        xHotspot: 0,
+        yHotspot: 0,
+        hbmMask: mask,
+        hbmColor: color,
+    };
     let icon = CreateIconIndirect(&ii);
     DeleteObject(color);
     DeleteObject(mask);
@@ -669,7 +947,14 @@ fn nid(app: &App) -> NOTIFYICONDATAW {
     n.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     n.uCallbackMessage = WM_TRAY;
     n.hIcon = app.icon;
-    let tip: Vec<u16> = format!("Windfall - {}{}", app.config.effect.title(), if app.config.enabled { "" } else { " (off)" }).encode_utf16().take(120).collect();
+    let tip: Vec<u16> = format!(
+        "Windfall - {}{}",
+        app.config.effect.title(),
+        if app.config.enabled { "" } else { " (off)" }
+    )
+    .encode_utf16()
+    .take(120)
+    .collect();
     n.szTip[..tip.len()].copy_from_slice(&tip);
     n
 }
@@ -689,17 +974,36 @@ unsafe fn tray_remove(app: &App) {
 const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 unsafe fn autostart_on() -> bool {
-    RegGetValueW(HKEY_CURRENT_USER, wide(RUN_KEY).as_ptr(), wide("Windfall").as_ptr(), RRF_RT_REG_SZ, null_mut(), null_mut(), null_mut()) == 0
+    RegGetValueW(
+        HKEY_CURRENT_USER,
+        wide(RUN_KEY).as_ptr(),
+        wide("Windfall").as_ptr(),
+        RRF_RT_REG_SZ,
+        null_mut(),
+        null_mut(),
+        null_mut(),
+    ) == 0
 }
 
 unsafe fn set_autostart(on: bool) {
     if on {
         if let Ok(exe) = std::env::current_exe() {
             let value = wide(&format!("\"{}\"", exe.display()));
-            RegSetKeyValueW(HKEY_CURRENT_USER, wide(RUN_KEY).as_ptr(), wide("Windfall").as_ptr(), REG_SZ, value.as_ptr() as *const c_void, (value.len() * 2) as u32);
+            RegSetKeyValueW(
+                HKEY_CURRENT_USER,
+                wide(RUN_KEY).as_ptr(),
+                wide("Windfall").as_ptr(),
+                REG_SZ,
+                value.as_ptr() as *const c_void,
+                (value.len() * 2) as u32,
+            );
         }
     } else {
-        RegDeleteKeyValueW(HKEY_CURRENT_USER, wide(RUN_KEY).as_ptr(), wide("Windfall").as_ptr());
+        RegDeleteKeyValueW(
+            HKEY_CURRENT_USER,
+            wide(RUN_KEY).as_ptr(),
+            wide("Windfall").as_ptr(),
+        );
     }
 }
 
@@ -708,7 +1012,12 @@ unsafe fn tray_menu(hwnd: HWND) {
     let Some(c) = snapshot else { return };
     let menu = CreatePopupMenu();
     let add = |m: HMENU, id: usize, label: &str, checked: bool| {
-        AppendMenuW(m, MF_STRING | if checked { MF_CHECKED } else { 0 }, id, wide(label).as_ptr());
+        AppendMenuW(
+            m,
+            MF_STRING | if checked { MF_CHECKED } else { 0 },
+            id,
+            wide(label).as_ptr(),
+        );
     };
     add(menu, 51, "Open controller", false);
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
@@ -722,17 +1031,35 @@ unsafe fn tray_menu(hwnd: HWND) {
     for (i, e) in Element::ALL.iter().enumerate() {
         add(elements, 20 + i, e.title(), *e == c.element);
     }
-    AppendMenuW(menu, MF_POPUP, elements as usize, wide("Flower element").as_ptr());
+    AppendMenuW(
+        menu,
+        MF_POPUP,
+        elements as usize,
+        wide("Flower element").as_ptr(),
+    );
     let renderers = CreatePopupMenu();
     for (i, r) in Renderer::ALL.iter().enumerate() {
         add(renderers, 30 + i, r.title(), *r == c.renderer);
     }
-    AppendMenuW(menu, MF_POPUP, renderers as usize, wide("Renderer").as_ptr());
+    AppendMenuW(
+        menu,
+        MF_POPUP,
+        renderers as usize,
+        wide("Renderer").as_ptr(),
+    );
     let intensity = CreatePopupMenu();
-    for (i, (l, v)) in [("Light", 0.2f32), ("Steady", 0.5), ("Heavy", 0.85)].iter().enumerate() {
+    for (i, (l, v)) in [("Light", 0.2f32), ("Steady", 0.5), ("Heavy", 0.85)]
+        .iter()
+        .enumerate()
+    {
         add(intensity, 40 + i, l, (c.intensity - v).abs() < 0.13);
     }
-    AppendMenuW(menu, MF_POPUP, intensity as usize, wide("Intensity").as_ptr());
+    AppendMenuW(
+        menu,
+        MF_POPUP,
+        intensity as usize,
+        wide("Intensity").as_ptr(),
+    );
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
     add(menu, 53, "Floating lights", c.lights);
     add(menu, 50, "Clear", false);
@@ -741,7 +1068,15 @@ unsafe fn tray_menu(hwnd: HWND) {
     let mut pt = POINT { x: 0, y: 0 };
     GetCursorPos(&mut pt);
     SetForegroundWindow(hwnd);
-    let cmd = TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_RETURNCMD, pt.x, pt.y, 0, hwnd, null());
+    let cmd = TrackPopupMenu(
+        menu,
+        TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_RETURNCMD,
+        pt.x,
+        pt.y,
+        0,
+        hwnd,
+        null(),
+    );
     PostMessageW(hwnd, WM_NULL, 0, 0);
     DestroyMenu(menu);
     if cmd == 0 {
@@ -755,16 +1090,53 @@ unsafe fn tray_menu(hwnd: HWND) {
         match cmd {
             1 => {
                 let on = !app.config.enabled;
-                apply(app, &patch(Patch { enabled: Some(on), ..Default::default() }));
+                apply(
+                    app,
+                    &patch(Patch {
+                        enabled: Some(on),
+                        ..Default::default()
+                    }),
+                );
             }
-            10..=17 => apply(app, &Patch { effect: Some(Effect::ALL[cmd - 10]), ..Default::default() }),
-            20..=25 => apply(app, &Patch { element: Some(Element::ALL[cmd - 20]), effect: Some(Effect::Flowers), ..Default::default() }),
-            30..=31 => apply(app, &Patch { renderer: Some(Renderer::ALL[cmd - 30]), ..Default::default() }),
-            40..=42 => apply(app, &Patch { intensity: Some([0.2, 0.5, 0.85][cmd - 40]), ..Default::default() }),
+            10..=17 => apply(
+                app,
+                &Patch {
+                    effect: Some(Effect::ALL[cmd - 10]),
+                    ..Default::default()
+                },
+            ),
+            20..=25 => apply(
+                app,
+                &Patch {
+                    element: Some(Element::ALL[cmd - 20]),
+                    effect: Some(Effect::Flowers),
+                    ..Default::default()
+                },
+            ),
+            30..=31 => apply(
+                app,
+                &Patch {
+                    renderer: Some(Renderer::ALL[cmd - 30]),
+                    ..Default::default()
+                },
+            ),
+            40..=42 => apply(
+                app,
+                &Patch {
+                    intensity: Some([0.2, 0.5, 0.85][cmd - 40]),
+                    ..Default::default()
+                },
+            ),
             50 => app.overlays.iter_mut().for_each(|o| o.world.clear()),
             53 => {
                 let on = !app.config.lights;
-                apply(app, &Patch { lights: Some(on), ..Default::default() });
+                apply(
+                    app,
+                    &Patch {
+                        lights: Some(on),
+                        ..Default::default()
+                    },
+                );
             }
             51 => open_controller(),
             52 => set_autostart(!autostart_on()),

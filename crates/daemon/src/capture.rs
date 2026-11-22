@@ -28,11 +28,26 @@ struct State {
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
-    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 impl Dispatch<wl_output::WlOutput, u32> for State {
-    fn event(st: &mut Self, _: &wl_output::WlOutput, ev: wl_output::Event, g: &u32, _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        st: &mut Self,
+        _: &wl_output::WlOutput,
+        ev: wl_output::Event,
+        g: &u32,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let wl_output::Event::Name { name } = ev {
             if let Some(e) = st.names.iter_mut().find(|(id, _)| id == g) {
                 e.1 = Some(name);
@@ -42,9 +57,21 @@ impl Dispatch<wl_output::WlOutput, u32> for State {
 }
 
 impl Dispatch<ZwlrScreencopyFrameV1, ()> for State {
-    fn event(st: &mut Self, _: &ZwlrScreencopyFrameV1, ev: zwlr_screencopy_frame_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        st: &mut Self,
+        _: &ZwlrScreencopyFrameV1,
+        ev: zwlr_screencopy_frame_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match ev {
-            zwlr_screencopy_frame_v1::Event::Buffer { format, width, height, stride } => {
+            zwlr_screencopy_frame_v1::Event::Buffer {
+                format,
+                width,
+                height,
+                stride,
+            } => {
                 if let WEnum::Value(f) = format {
                     if st.buffer.is_none() {
                         st.buffer = Some((f, width, height, stride));
@@ -84,18 +111,37 @@ pub fn grab(output_name: &str, region: (i32, i32, i32, i32)) -> Option<Image> {
     let (globals, mut queue) = registry_queue_init::<State>(&conn).ok()?;
     let qh = queue.handle();
     let mut st = State::default();
-    let mgr = globals.bind::<ZwlrScreencopyManagerV1, _, _>(&qh, 1..=3, ()).ok()?;
+    let mgr = globals
+        .bind::<ZwlrScreencopyManagerV1, _, _>(&qh, 1..=3, ())
+        .ok()?;
     let shm = globals.bind::<wl_shm::WlShm, _, _>(&qh, 1..=1, ()).ok()?;
     let mut outputs = Vec::new();
     globals.contents().with_list(|list| {
         for g in list.iter().filter(|g| g.interface == "wl_output") {
             st.names.push((g.name, None));
-            outputs.push(globals.registry().bind::<wl_output::WlOutput, _, _>(g.name, g.version.min(4), &qh, g.name));
+            outputs.push(globals.registry().bind::<wl_output::WlOutput, _, _>(
+                g.name,
+                g.version.min(4),
+                &qh,
+                g.name,
+            ));
         }
     });
     queue.roundtrip(&mut st).ok()?;
-    let idx = st.names.iter().position(|(_, n)| n.as_deref() == Some(output_name))?;
-    let frame = mgr.capture_output_region(0, &outputs[idx], region.0, region.1, region.2, region.3, &qh, ());
+    let idx = st
+        .names
+        .iter()
+        .position(|(_, n)| n.as_deref() == Some(output_name))?;
+    let frame = mgr.capture_output_region(
+        0,
+        &outputs[idx],
+        region.0,
+        region.1,
+        region.2,
+        region.3,
+        &qh,
+        (),
+    );
     while st.buffer.is_none() || (frame.version() >= 3 && !st.buffer_done) {
         queue.blocking_dispatch(&mut st).ok()?;
         if st.failed {
@@ -116,13 +162,25 @@ pub fn grab(output_name: &str, region: (i32, i32, i32, i32)) -> Option<Image> {
     }
     let result = if st.ready {
         unsafe {
-            let p = libc::mmap(std::ptr::null_mut(), size, libc::PROT_READ, libc::MAP_SHARED, std::os::fd::AsRawFd::as_raw_fd(&fd), 0);
+            let p = libc::mmap(
+                std::ptr::null_mut(),
+                size,
+                libc::PROT_READ,
+                libc::MAP_SHARED,
+                std::os::fd::AsRawFd::as_raw_fd(&fd),
+                0,
+            );
             if p == libc::MAP_FAILED {
                 None
             } else {
                 let data = std::slice::from_raw_parts(p as *const u8, size).to_vec();
                 libc::munmap(p, size);
-                Some(Image { w: w as usize, h: h as usize, stride: stride as usize, data })
+                Some(Image {
+                    w: w as usize,
+                    h: h as usize,
+                    stride: stride as usize,
+                    data,
+                })
             }
         }
     } else {

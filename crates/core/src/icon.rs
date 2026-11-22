@@ -22,24 +22,45 @@ pub fn glyph(effect: Effect, pixel: bool, enabled: bool) -> (Vec<u8>, i32) {
     let ns = n as f32;
     for py in 0..n {
         for px in 0..n {
-            let (x, y) = ((px as f32 + 0.5) / ns * 2.0 - 1.0, (py as f32 + 0.5) / ns * 2.0 - 1.0);
+            let (x, y) = (
+                (px as f32 + 0.5) / ns * 2.0 - 1.0,
+                (py as f32 + 0.5) / ns * 2.0 - 1.0,
+            );
             let d = (x * x + y * y).sqrt();
             let ang = y.atan2(x);
             let cov: f32 = match effect {
                 // A ring with a slash: nothing is being drawn.
-                Effect::Off => (((d > 0.62 && d < 0.84) || ((x + y).abs() < 0.11 && d < 0.84)) as i32 as f32).max(0.0),
+                Effect::Off => (((d > 0.62 && d < 0.84) || ((x + y).abs() < 0.11 && d < 0.84))
+                    as i32 as f32)
+                    .max(0.0),
                 Effect::Snow => {
-                    let arm = (0..3).map(|k| { let a = k as f32 * std::f32::consts::PI / 3.0; ((x * a.sin() - y * a.cos()).abs() < 0.11 && d < 0.88) as i32 as f32 }).fold(0.0, f32::max);
+                    let arm = (0..3)
+                        .map(|k| {
+                            let a = k as f32 * std::f32::consts::PI / 3.0;
+                            ((x * a.sin() - y * a.cos()).abs() < 0.11 && d < 0.88) as i32 as f32
+                        })
+                        .fold(0.0, f32::max);
                     arm.max((d < 0.2) as i32 as f32)
                 }
-                Effect::Leaves => ((x.abs() * 1.1 + y.abs() * 0.7 < 0.8 && (x + y * 0.6).abs() < 0.5) as i32 as f32).max(((y - x).abs() < 0.07 && x > 0.0 && x < 0.95 && y > 0.0) as i32 as f32 * 0.0),
+                Effect::Leaves => ((x.abs() * 1.1 + y.abs() * 0.7 < 0.8
+                    && (x + y * 0.6).abs() < 0.5) as i32 as f32)
+                    .max(
+                        ((y - x).abs() < 0.07 && x > 0.0 && x < 0.95 && y > 0.0) as i32 as f32
+                            * 0.0,
+                    ),
                 Effect::Blossom => {
                     let petal = (ang * 5.0).cos().abs();
                     ((d < 0.28 + 0.6 * petal * petal) && d > 0.12) as i32 as f32
                 }
                 Effect::Rain => {
-                    let drop = |cx: f32, cy: f32| { let (dx, dy) = (x - cx, y - cy); ((dx * 0.9 + dy * 0.35).abs() < 0.13 && dy.abs() < 0.32) as i32 as f32 };
-                    drop(-0.45, -0.4).max(drop(0.1, -0.1)).max(drop(0.55, 0.3)).max(drop(-0.3, 0.45))
+                    let drop = |cx: f32, cy: f32| {
+                        let (dx, dy) = (x - cx, y - cy);
+                        ((dx * 0.9 + dy * 0.35).abs() < 0.13 && dy.abs() < 0.32) as i32 as f32
+                    };
+                    drop(-0.45, -0.4)
+                        .max(drop(0.1, -0.1))
+                        .max(drop(0.55, 0.3))
+                        .max(drop(-0.3, 0.45))
                 }
                 Effect::Comets => {
                     let tail = ((x - y).abs() < 0.13 && x > -0.85 && x < 0.45) as i32 as f32;

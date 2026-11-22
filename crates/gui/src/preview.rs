@@ -3,13 +3,13 @@
 
 use gtk::cairo::{self, Antialias, Context, Filter, Format, ImageSurface, Matrix};
 use gtk::prelude::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 use windfall_core::config::{Config, Effect, Renderer};
 use windfall_core::draw::{Batch, FLOATS_PER_VERTEX};
 use windfall_core::geom::Rect;
 use windfall_core::palette::theme;
 use windfall_core::sim::{Params, Scene, Surf, SurfKind, World};
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct Preview {
     pub area: gtk::DrawingArea,
@@ -27,12 +27,24 @@ struct State {
 
 impl Preview {
     pub fn new(config: Config) -> Preview {
-        let area = gtk::DrawingArea::builder().content_height(210).hexpand(true).build();
+        let area = gtk::DrawingArea::builder()
+            .content_height(210)
+            .hexpand(true)
+            .build();
         area.add_css_class("preview");
-        let state = Rc::new(RefCell::new(State { config, world: World::new(42), batch: Batch::default(), cursor: None, last: None, size: (0.0, 0.0) }));
+        let state = Rc::new(RefCell::new(State {
+            config,
+            world: World::new(42),
+            batch: Batch::default(),
+            cursor: None,
+            last: None,
+            size: (0.0, 0.0),
+        }));
         {
             let st = state.clone();
-            area.set_draw_func(move |_, cr, w, h| draw(&mut st.borrow_mut(), cr, w as f32, h as f32));
+            area.set_draw_func(move |_, cr, w, h| {
+                draw(&mut st.borrow_mut(), cr, w as f32, h as f32)
+            });
         }
         {
             let st = state.clone();
@@ -60,7 +72,8 @@ impl Preview {
         let motion = gtk::EventControllerMotion::new();
         {
             let st = state.clone();
-            motion.connect_motion(move |_, x, y| st.borrow_mut().cursor = Some([x as f32, y as f32]));
+            motion
+                .connect_motion(move |_, x, y| st.borrow_mut().cursor = Some([x as f32, y as f32]));
             let st = state.clone();
             motion.connect_leave(move |_| st.borrow_mut().cursor = None);
         }
@@ -85,7 +98,11 @@ fn params(c: &Config) -> Params {
         windows: true,
         layers: true,
         pixel: c.renderer == Renderer::Pixel,
-        pixel_size: if c.renderer == Renderer::Pixel { c.pixel_size as f32 } else { 0.0 },
+        pixel_size: if c.renderer == Renderer::Pixel {
+            c.pixel_size as f32
+        } else {
+            0.0
+        },
         glow: windfall_core::config::glow_for(c),
         element: c.element,
         lights: c.lights,
@@ -103,8 +120,24 @@ fn scene(w: f32, h: f32, cursor: Option<[f32; 2]>) -> Scene {
         w: w * 1.0,
         h,
         surfs: vec![
-            Surf { id: 1, rect: Rect::new(0.0, ground, w, 400.0), z: -1, kind: SurfKind::Ground, inset: 0.0, group: 0, shown: true },
-            Surf { id: 2, rect: win, z: 0, kind: SurfKind::Window, inset: 6.0, group: 0, shown: true },
+            Surf {
+                id: 1,
+                rect: Rect::new(0.0, ground, w, 400.0),
+                z: -1,
+                kind: SurfKind::Ground,
+                inset: 0.0,
+                group: 0,
+                shown: true,
+            },
+            Surf {
+                id: 2,
+                rect: win,
+                z: 0,
+                kind: SurfKind::Window,
+                inset: 6.0,
+                group: 0,
+                shown: true,
+            },
         ],
         cursor,
     }
@@ -117,12 +150,27 @@ fn draw(s: &mut State, cr: &Context, w: f32, h: f32) {
     cr.set_source_rgb(t.bg[0] as f64, t.bg[1] as f64, t.bg[2] as f64);
     let _ = cr.paint();
     let win = Rect::new(w * 0.14, h * 0.42, w * 0.46, h);
-    cr.set_source_rgba(t.surface[0] as f64, t.surface[1] as f64, t.surface[2] as f64, 1.0);
+    cr.set_source_rgba(
+        t.surface[0] as f64,
+        t.surface[1] as f64,
+        t.surface[2] as f64,
+        1.0,
+    );
     cr.rectangle(win.x as f64, win.y as f64, win.w as f64, (h - win.y) as f64);
     let _ = cr.fill();
-    cr.set_source_rgba(t.border[0] as f64, t.border[1] as f64, t.border[2] as f64, 1.0);
+    cr.set_source_rgba(
+        t.border[0] as f64,
+        t.border[1] as f64,
+        t.border[2] as f64,
+        1.0,
+    );
     cr.set_line_width(1.0);
-    cr.rectangle(win.x as f64 + 0.5, win.y as f64 + 0.5, win.w as f64, (h - win.y) as f64);
+    cr.rectangle(
+        win.x as f64 + 0.5,
+        win.y as f64 + 0.5,
+        win.w as f64,
+        (h - win.y) as f64,
+    );
     let _ = cr.stroke();
 
     s.batch.clear();
@@ -202,7 +250,14 @@ fn paint_batch(cr: &Context, data: &[f32]) {
             let (cx, cy) = (v0[0] + ex.0 + ey.0, v0[1] + ex.1 + ey.1);
             col(v0);
             cr.save().ok();
-            cr.transform(Matrix::new(ex.0 as f64, ex.1 as f64, ey.0 as f64, ey.1 as f64, cx as f64, cy as f64));
+            cr.transform(Matrix::new(
+                ex.0 as f64,
+                ex.1 as f64,
+                ey.0 as f64,
+                ey.1 as f64,
+                cx as f64,
+                cy as f64,
+            ));
             cr.arc(0.0, 0.0, 1.0, 0.0, std::f64::consts::TAU);
             cr.restore().ok();
             let _ = cr.fill();
@@ -227,14 +282,36 @@ fn _unused(_: Effect) {}
 
 /// Renders the preview offscreen after `secs` of simulated time and saves it as a PNG (used for screenshots
 /// and checks; needs no display).
-pub fn render_png(config: &Config, secs: f32, w: i32, h: i32, path: &str, cursor: Option<[f32; 2]>) -> Result<(), String> {
-    let mut st = State { config: config.clone(), world: World::new(7), batch: Batch::default(), cursor: None, last: None, size: (w as f32, h as f32) };
+pub fn render_png(
+    config: &Config,
+    secs: f32,
+    w: i32,
+    h: i32,
+    path: &str,
+    cursor: Option<[f32; 2]>,
+) -> Result<(), String> {
+    let mut st = State {
+        config: config.clone(),
+        world: World::new(7),
+        batch: Batch::default(),
+        cursor: None,
+        last: None,
+        size: (w as f32, h as f32),
+    };
     let p = params(&st.config);
-    let dt = if config.renderer == Renderer::Pixel { 1.0 / 30.0 } else { 1.0 / 60.0 };
+    let dt = if config.renderer == Renderer::Pixel {
+        1.0 / 30.0
+    } else {
+        1.0 / 60.0
+    };
     let steps = (secs / dt) as usize;
     for i in 0..steps {
         // The pointer stays over the lawn for the last two seconds, if there is one.
-        let c = if (steps - i) as f32 * dt <= 2.0 { cursor } else { None };
+        let c = if (steps - i) as f32 * dt <= 2.0 {
+            cursor
+        } else {
+            None
+        };
         st.world.set_scene(scene(w as f32, h as f32, c));
         st.world.step(dt, &p);
     }

@@ -4,6 +4,5 @@ Name=Windfall
 Comment=Weather overlay for your desktop
 Exec=windfall
 Icon=windfall
-OnlyShowIn=Hyprland;
 X-GNOME-Autostart-Delay=2
 NoDisplay=true

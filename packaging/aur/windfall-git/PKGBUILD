@@ -1,12 +1,12 @@
 # AUR: windfall-git, built from the repository.
 pkgname=windfall-git
-pkgver=0.1.0
+pkgver=0.7.0.r0.g0000000
 pkgrel=1
-pkgdesc="Snow, leaves, blossom, rain and flowers on your Hyprland desktop, with a tray icon and a GTK4 controller"
+pkgdesc="Weather overlay for Hyprland, Plasma Wayland/X11 and Windows, with a GTK4 controller"
 arch=('x86_64' 'aarch64')
 url="https://github.com/tak0dan/windfall"
 license=('GPL-3.0-or-later')
-depends=('gtk4' 'libadwaita' 'libglvnd' 'wayland' 'gcc-libs' 'glibc')
+depends=('gtk4' 'libadwaita' 'libglvnd' 'wayland' 'xorg-xprop' 'gcc-libs' 'glibc')
 makedepends=('cargo')
 optdepends=('ttf-jetbrains-mono: pixel-theme font fallback'
             'ttf-press-start-2p: authentic pixel font for the controller in pixel mode')
@@ -20,7 +20,7 @@ sha256sums=('SKIP')
 
 pkgver() {
   cd "$pkgname"
-  printf "0.1.0.r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  printf "0.7.0.r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 prepare() {

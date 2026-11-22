@@ -34,8 +34,14 @@ impl Raster<'_> {
     }
 
     fn bounds(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> Option<(i32, i32, i32, i32)> {
-        let (minx, maxx) = ((x0.floor() as i32).max(0), (x1.ceil() as i32).min(self.w - 1));
-        let (miny, maxy) = ((y0.floor() as i32).max(0), (y1.ceil() as i32).min(self.h - 1));
+        let (minx, maxx) = (
+            (x0.floor() as i32).max(0),
+            (x1.ceil() as i32).min(self.w - 1),
+        );
+        let (miny, maxy) = (
+            (y0.floor() as i32).max(0),
+            (y1.ceil() as i32).min(self.h - 1),
+        );
         (minx <= maxx && miny <= maxy).then_some((minx, miny, maxx, maxy))
     }
 
@@ -46,7 +52,14 @@ impl Raster<'_> {
             return;
         }
         let sg = area.signum();
-        let Some((minx, miny, maxx, maxy)) = self.bounds(p0[0].min(p1[0]).min(p2[0]), p0[1].min(p1[1]).min(p2[1]), p0[0].max(p1[0]).max(p2[0]), p0[1].max(p1[1]).max(p2[1])) else { return };
+        let Some((minx, miny, maxx, maxy)) = self.bounds(
+            p0[0].min(p1[0]).min(p2[0]),
+            p0[1].min(p1[1]).min(p2[1]),
+            p0[0].max(p1[0]).max(p2[0]),
+            p0[1].max(p1[1]).max(p2[1]),
+        ) else {
+            return;
+        };
         let inside = |qx: f32, qy: f32| {
             let e0 = ((p1[0] - p0[0]) * (qy - p0[1]) - (p1[1] - p0[1]) * (qx - p0[0])) * sg;
             let e1 = ((p2[0] - p1[0]) * (qy - p1[1]) - (p2[1] - p1[1]) * (qx - p1[0])) * sg;
@@ -55,7 +68,16 @@ impl Raster<'_> {
         };
         for y in miny..=maxy {
             for x in minx..=maxx {
-                let cov = if self.aa { SS.iter().filter(|(sx, sy)| inside(x as f32 + sx, y as f32 + sy)).count() as f32 / 4.0 } else if inside(x as f32 + 0.5, y as f32 + 0.5) { 1.0 } else { 0.0 };
+                let cov = if self.aa {
+                    SS.iter()
+                        .filter(|(sx, sy)| inside(x as f32 + sx, y as f32 + sy))
+                        .count() as f32
+                        / 4.0
+                } else if inside(x as f32 + 0.5, y as f32 + 0.5) {
+                    1.0
+                } else {
+                    0.0
+                };
                 if cov > 0.0 {
                     self.blend(x, y, col, cov);
                 }
@@ -70,7 +92,11 @@ impl Raster<'_> {
             return;
         }
         let (rx, ry) = (ex[0].abs() + ey[0].abs(), ex[1].abs() + ey[1].abs());
-        let Some((minx, miny, maxx, maxy)) = self.bounds(c[0] - rx, c[1] - ry, c[0] + rx, c[1] + ry) else { return };
+        let Some((minx, miny, maxx, maxy)) =
+            self.bounds(c[0] - rx, c[1] - ry, c[0] + rx, c[1] + ry)
+        else {
+            return;
+        };
         let reff = det.abs().sqrt();
         for y in miny..=maxy {
             for x in minx..=maxx {
@@ -78,7 +104,13 @@ impl Raster<'_> {
                 let u = (ey[1] * dx - ey[0] * dy) / det;
                 let v = (-ex[1] * dx + ex[0] * dy) / det;
                 let d = (u * u + v * v).sqrt();
-                let cov = if self.aa { ((1.0 - d) * reff + 0.5).clamp(0.0, 1.0) } else if d <= 1.0 { 1.0 } else { 0.0 };
+                let cov = if self.aa {
+                    ((1.0 - d) * reff + 0.5).clamp(0.0, 1.0)
+                } else if d <= 1.0 {
+                    1.0
+                } else {
+                    0.0
+                };
                 if cov > 0.0 {
                     self.blend(x, y, col, cov);
                 }
@@ -106,7 +138,14 @@ impl Raster<'_> {
             }
             let (b, c) = (vert(i + 1), vert(i + 2));
             let avg = |k: usize| ((a[k] + b[k] + c[k]) / 3.0).clamp(0.0, 1.0);
-            self.triangle([[a[0] * sx, a[1] * sy], [b[0] * sx, b[1] * sy], [c[0] * sx, c[1] * sy]], [avg(4), avg(5), avg(6), avg(7)]);
+            self.triangle(
+                [
+                    [a[0] * sx, a[1] * sy],
+                    [b[0] * sx, b[1] * sy],
+                    [c[0] * sx, c[1] * sy],
+                ],
+                [avg(4), avg(5), avg(6), avg(7)],
+            );
             i += 3;
         }
     }
@@ -124,7 +163,13 @@ mod tests {
     #[test]
     fn a_triangle_fills_its_inside_only() {
         let mut buf = vec![0u8; 20 * 20 * 4];
-        let mut r = Raster { buf: &mut buf, w: 20, h: 20, aa: false, opacity: 1.0 };
+        let mut r = Raster {
+            buf: &mut buf,
+            w: 20,
+            h: 20,
+            aa: false,
+            opacity: 1.0,
+        };
         r.triangle([[2.0, 2.0], [18.0, 2.0], [2.0, 18.0]], [1.0, 0.0, 0.0, 1.0]);
         assert_eq!(px(&buf, 20, 4, 4), [0, 0, 255, 255]); // BGRA: red
         assert_eq!(px(&buf, 20, 17, 17), [0, 0, 0, 0]);
@@ -133,7 +178,13 @@ mod tests {
     #[test]
     fn an_ellipse_is_round_and_soft_at_the_edge() {
         let mut buf = vec![0u8; 40 * 40 * 4];
-        let mut r = Raster { buf: &mut buf, w: 40, h: 40, aa: true, opacity: 1.0 };
+        let mut r = Raster {
+            buf: &mut buf,
+            w: 40,
+            h: 40,
+            aa: true,
+            opacity: 1.0,
+        };
         r.ellipse([20.0, 20.0], [10.3, 0.0], [0.0, 10.3], [0.0, 1.0, 0.0, 1.0]);
         assert_eq!(px(&buf, 40, 20, 20)[3], 255);
         assert_eq!(px(&buf, 40, 2, 2)[3], 0);
@@ -144,7 +195,13 @@ mod tests {
     #[test]
     fn opacity_scales_alpha_and_premultiplies() {
         let mut buf = vec![0u8; 4 * 4 * 4];
-        let mut r = Raster { buf: &mut buf, w: 4, h: 4, aa: false, opacity: 0.5 };
+        let mut r = Raster {
+            buf: &mut buf,
+            w: 4,
+            h: 4,
+            aa: false,
+            opacity: 0.5,
+        };
         r.triangle([[0.0, 0.0], [8.0, 0.0], [0.0, 8.0]], [1.0, 1.0, 1.0, 1.0]);
         let p = px(&buf, 4, 0, 0);
         assert!((p[3] as i32 - 127).abs() <= 1 && (p[0] as i32 - 127).abs() <= 1);

@@ -24,12 +24,19 @@ pub struct Strip<'a> {
 impl Strip<'_> {
     fn px(&self, x: usize, y: usize) -> [i32; 3] {
         let i = y * self.stride + x * 4;
-        [self.data[i] as i32, self.data[i + 1] as i32, self.data[i + 2] as i32]
+        [
+            self.data[i] as i32,
+            self.data[i + 1] as i32,
+            self.data[i + 2] as i32,
+        ]
     }
 }
 
 fn diff(a: [i32; 3], b: [i32; 3]) -> i32 {
-    (a[0] - b[0]).abs().max((a[1] - b[1]).abs()).max((a[2] - b[2]).abs())
+    (a[0] - b[0])
+        .abs()
+        .max((a[1] - b[1]).abs())
+        .max((a[2] - b[2]).abs())
 }
 
 const EDGE: i32 = 26;
@@ -42,12 +49,22 @@ pub fn segments(s: &Strip) -> Vec<Segment> {
     // For each column, where does the first strong horizontal edge sit?
     let depth = s.h.min(24);
     // Edges everywhere means a busy picture, not a bar: nothing reliable to grow on.
-    let hits = (0..s.w).map(|x| (2..depth).filter(|&r| diff(s.px(x, r), s.px(x, r - 2)) >= EDGE).count()).sum::<usize>();
+    let hits = (0..s.w)
+        .map(|x| {
+            (2..depth)
+                .filter(|&r| diff(s.px(x, r), s.px(x, r - 2)) >= EDGE)
+                .count()
+        })
+        .sum::<usize>();
     if hits * 10 > s.w * (depth - 2) * 3 {
         return Vec::new();
     }
     let top_of: Vec<Option<usize>> = (0..s.w)
-        .map(|x| (2..depth).find(|&r| diff(s.px(x, r), s.px(x, r - 2)) >= EDGE).map(|r| r - 1))
+        .map(|x| {
+            (2..depth)
+                .find(|&r| diff(s.px(x, r), s.px(x, r - 2)) >= EDGE)
+                .map(|r| r - 1)
+        })
         .collect();
     // Join neighbouring columns whose edges sit at about the same height. A module's top edge is level and
     // nearly unbroken; the tops of letters are not, so text on a solid bar does not count.
@@ -80,7 +97,11 @@ pub fn segments(s: &Strip) -> Vec<Segment> {
             if top <= 10 && closed_ends(s, start, end, top) {
                 // Rounded corners: keep a little in from both ends.
                 let trim = 3.0f32.min(len as f32 / 4.0);
-                out.push(Segment { x0: start as f32 + trim, x1: end as f32 - trim, top: top as f32 });
+                out.push(Segment {
+                    x0: start as f32 + trim,
+                    x1: end as f32 - trim,
+                    top: top as f32,
+                });
             }
         }
         x = end;
@@ -96,7 +117,11 @@ pub fn segments(s: &Strip) -> Vec<Segment> {
         (0..s.w).filter(|&x| diff(s.px(x, r), base) > 14).count() * 20 < s.w
     });
     if flat {
-        vec![Segment { x0: 0.0, x1: s.w as f32, top: 0.0 }]
+        vec![Segment {
+            x0: 0.0,
+            x1: s.w as f32,
+            top: 0.0,
+        }]
     } else {
         Vec::new()
     }
@@ -108,7 +133,9 @@ fn closed_ends(s: &Strip, start: usize, end: usize, top: usize) -> bool {
         let Some(out) = outside else { return true };
         let rows = (top + 2)..(top + 9).min(s.h);
         let total = rows.len();
-        let hits = rows.filter(|&r| diff(s.px(inside, r), s.px(out, r)) >= EDGE).count();
+        let hits = rows
+            .filter(|&r| diff(s.px(inside, r), s.px(out, r)) >= EDGE)
+            .count();
         total == 0 || hits * 2 >= total.min(4)
     };
     let left_out = (start >= 2).then(|| start - 2);

@@ -53,15 +53,31 @@ impl State {
 
 impl Picker {
     pub fn new() -> Picker {
-        let area = gtk::DrawingArea::builder().content_width(260).content_height(150).hexpand(true).build();
+        let area = gtk::DrawingArea::builder()
+            .content_width(260)
+            .content_height(150)
+            .hexpand(true)
+            .build();
         area.add_css_class("sv-square");
         let hue = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 360.0, 1.0);
         hue.set_draw_value(false);
         hue.add_css_class("hue");
         let entry = gtk::Entry::builder().max_length(7).width_chars(8).build();
         entry.set_valign(gtk::Align::Center);
-        let swatch = gtk::DrawingArea::builder().content_width(34).content_height(22).valign(gtk::Align::Center).build();
-        let st = Rc::new(State { hsv: Cell::new([0.0, 0.6, 1.0]), area: area.clone(), hue: hue.clone(), entry: entry.clone(), swatch: swatch.clone(), quiet: Cell::new(false), on_change: RefCell::new(None) });
+        let swatch = gtk::DrawingArea::builder()
+            .content_width(34)
+            .content_height(22)
+            .valign(gtk::Align::Center)
+            .build();
+        let st = Rc::new(State {
+            hsv: Cell::new([0.0, 0.6, 1.0]),
+            area: area.clone(),
+            hue: hue.clone(),
+            entry: entry.clone(),
+            swatch: swatch.clone(),
+            quiet: Cell::new(false),
+            on_change: RefCell::new(None),
+        });
 
         // The square: white to the right fades in saturation, black toward the bottom darkens.
         {
@@ -118,7 +134,11 @@ impl Picker {
         line.append(&label);
         line.append(&entry);
         picker_root.append(&line);
-        let p = Picker { root: picker_root, swatch, st };
+        let p = Picker {
+            root: picker_root,
+            swatch,
+            st,
+        };
 
         // Pick on the square: press and drag.
         let drag = gtk::GestureDrag::new();
@@ -173,7 +193,10 @@ impl Picker {
     }
 
     fn pick(&self, x: f64, y: f64) {
-        let (w, h) = (self.st.area.width().max(1) as f64, self.st.area.height().max(1) as f64);
+        let (w, h) = (
+            self.st.area.width().max(1) as f64,
+            self.st.area.height().max(1) as f64,
+        );
         let mut c = self.st.hsv.get();
         c[1] = (x / w).clamp(0.0, 1.0) as f32;
         c[2] = (1.0 - y / h).clamp(0.0, 1.0) as f32;
@@ -217,7 +240,9 @@ impl Picker {
         if c[1] < 0.01 || c[2] < 0.01 {
             c[0] = old[0];
         }
-        if hex(hsv(c[0], c[1], c[2])) == hex(self.st.rgb()) && self.st.entry.text().eq_ignore_ascii_case(value) {
+        if hex(hsv(c[0], c[1], c[2])) == hex(self.st.rgb())
+            && self.st.entry.text().eq_ignore_ascii_case(value)
+        {
             return;
         }
         self.st.hsv.set(c);

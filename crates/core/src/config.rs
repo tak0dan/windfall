@@ -21,7 +21,16 @@ pub enum Effect {
 }
 
 impl Effect {
-    pub const ALL: [Effect; 8] = [Effect::Off, Effect::Snow, Effect::Leaves, Effect::Blossom, Effect::Rain, Effect::Flowers, Effect::Comets, Effect::Hearts];
+    pub const ALL: [Effect; 8] = [
+        Effect::Off,
+        Effect::Snow,
+        Effect::Leaves,
+        Effect::Blossom,
+        Effect::Rain,
+        Effect::Flowers,
+        Effect::Comets,
+        Effect::Hearts,
+    ];
     pub fn name(self) -> &'static str {
         match self {
             Effect::Off => "off",
@@ -75,7 +84,14 @@ pub enum Element {
 }
 
 impl Element {
-    pub const ALL: [Element; 6] = [Element::Natural, Element::Lightning, Element::Fire, Element::Ice, Element::Matter, Element::Void];
+    pub const ALL: [Element; 6] = [
+        Element::Natural,
+        Element::Lightning,
+        Element::Fire,
+        Element::Ice,
+        Element::Matter,
+        Element::Void,
+    ];
     pub fn name(self) -> &'static str {
         match self {
             Element::Natural => "natural",
@@ -97,7 +113,9 @@ impl Element {
         }
     }
     pub fn parse(s: &str) -> Option<Element> {
-        Element::ALL.into_iter().find(|e| e.name() == s.to_ascii_lowercase())
+        Element::ALL
+            .into_iter()
+            .find(|e| e.name() == s.to_ascii_lowercase())
     }
 }
 
@@ -126,7 +144,9 @@ impl Renderer {
         }
     }
     pub fn parse(s: &str) -> Option<Renderer> {
-        Renderer::ALL.into_iter().find(|r| r.name() == s.to_ascii_lowercase())
+        Renderer::ALL
+            .into_iter()
+            .find(|r| r.name() == s.to_ascii_lowercase())
     }
 }
 
@@ -156,7 +176,9 @@ impl BarMode {
         }
     }
     pub fn parse(s: &str) -> Option<BarMode> {
-        BarMode::ALL.into_iter().find(|m| m.name() == s.to_ascii_lowercase())
+        BarMode::ALL
+            .into_iter()
+            .find(|m| m.name() == s.to_ascii_lowercase())
     }
 }
 
@@ -250,7 +272,12 @@ impl Config {
             self.lights = true;
         }
         let d = Config::default();
-        for (field, default) in [(&mut self.lights_color, d.lights_color), (&mut self.hearts_color, d.hearts_color), (&mut self.comet_color, d.comet_color), (&mut self.flower_color, d.flower_color)] {
+        for (field, default) in [
+            (&mut self.lights_color, d.lights_color),
+            (&mut self.hearts_color, d.hearts_color),
+            (&mut self.comet_color, d.comet_color),
+            (&mut self.flower_color, d.flower_color),
+        ] {
             if crate::palette::parse_hex(field).is_none() {
                 *field = default;
             }
@@ -262,7 +289,9 @@ impl Config {
 
     #[cfg(windows)]
     pub fn path() -> PathBuf {
-        let base = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+        let base = std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
         base.join("windfall").join("config.toml")
     }
 
@@ -279,7 +308,10 @@ impl Config {
         // Settings from the working-title days live in ~/.config/snowhush; take them over once.
         let path = Config::path();
         if !path.exists() {
-            let old = path.parent().and_then(|d| d.parent()).map(|d| d.join("snowhush").join("config.toml"));
+            let old = path
+                .parent()
+                .and_then(|d| d.parent())
+                .map(|d| d.join("snowhush").join("config.toml"));
             if let Some(old) = old.filter(|o| o.exists()) {
                 if let Some(dir) = path.parent() {
                     let _ = std::fs::create_dir_all(dir);
@@ -343,9 +375,33 @@ impl Config {
         macro_rules! set {
             ($($f:ident),*) => { $( if let Some(v) = p.$f { self.$f = v; } )* };
         }
-        set!(enabled, effect, element, renderer, intensity, opacity, pixel_size, pixel_levels, melt, ground, windows, layers, bar_mode, lights, flower_single, over_fullscreen, interact, wind);
+        set!(
+            enabled,
+            effect,
+            element,
+            renderer,
+            intensity,
+            opacity,
+            pixel_size,
+            pixel_levels,
+            melt,
+            ground,
+            windows,
+            layers,
+            bar_mode,
+            lights,
+            flower_single,
+            over_fullscreen,
+            interact,
+            wind
+        );
         self.clamp();
-        for (new, field) in [(&p.lights_color, &mut self.lights_color), (&p.hearts_color, &mut self.hearts_color), (&p.comet_color, &mut self.comet_color), (&p.flower_color, &mut self.flower_color)] {
+        for (new, field) in [
+            (&p.lights_color, &mut self.lights_color),
+            (&p.hearts_color, &mut self.hearts_color),
+            (&p.comet_color, &mut self.comet_color),
+            (&p.flower_color, &mut self.flower_color),
+        ] {
             if let Some(c) = new {
                 if crate::palette::parse_hex(c).is_some() {
                     *field = c.to_ascii_lowercase();
@@ -370,7 +426,9 @@ impl Config {
 /// an element, which then brings its own.
 pub fn glow_for(c: &Config) -> crate::palette::Rgb {
     let picked = crate::palette::parse_hex(&c.glow_color).unwrap_or([1.0, 0.85, 0.3]);
-    if c.glow_color.eq_ignore_ascii_case(&Config::default().glow_color) {
+    if c.glow_color
+        .eq_ignore_ascii_case(&Config::default().glow_color)
+    {
         if let Some(e) = crate::palette::element_accent(c.element) {
             return e;
         }
@@ -386,13 +444,25 @@ impl Config {
 }
 
 /// The colours the simulation needs, resolved from the settings: (lights, hearts, comets, single flower colour).
-pub fn colors_of(c: &Config) -> (crate::palette::Rgb, crate::palette::Rgb, crate::palette::Rgb, Option<crate::palette::Rgb>) {
-    let rgb = |s: &str, d: &str| crate::palette::parse_hex(s).or_else(|| crate::palette::parse_hex(d)).unwrap_or([1.0, 1.0, 1.0]);
+pub fn colors_of(
+    c: &Config,
+) -> (
+    crate::palette::Rgb,
+    crate::palette::Rgb,
+    crate::palette::Rgb,
+    Option<crate::palette::Rgb>,
+) {
+    let rgb = |s: &str, d: &str| {
+        crate::palette::parse_hex(s)
+            .or_else(|| crate::palette::parse_hex(d))
+            .unwrap_or([1.0, 1.0, 1.0])
+    };
     let d = Config::default();
     (
         rgb(&c.lights_color, &d.lights_color),
         rgb(&c.hearts_color, &d.hearts_color),
         rgb(&c.comet_color, &d.comet_color),
-        c.flower_single.then(|| rgb(&c.flower_color, &d.flower_color)),
+        c.flower_single
+            .then(|| rgb(&c.flower_color, &d.flower_color)),
     )
 }

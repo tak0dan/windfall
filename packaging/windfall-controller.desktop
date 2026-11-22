@@ -2,7 +2,7 @@
 Type=Application
 Name=Windfall Controller
 GenericName=Desktop weather
-Comment=Snow, leaves, blossom, rain or flowers on your Hyprland desktop
+Comment=Snow, leaves, blossom, rain or flowers on your desktop
 Exec=windfall-gui
 Icon=windfall
 Terminal=false

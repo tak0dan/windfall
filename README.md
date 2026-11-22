@@ -15,13 +15,13 @@
 <p align="center">
   <a href="https://github.com/tak0dan/windfall/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/tak0dan/windfall?style=flat-square"></a>
   <img alt="Licence" src="https://img.shields.io/badge/licence-GPL--3.0--or--later-blue?style=flat-square">
-  <img alt="Platforms" src="https://img.shields.io/badge/Hyprland%20%7C%20Windows%2010%2F11-informational?style=flat-square">
+  <img alt="Platforms" src="https://img.shields.io/badge/Hyprland%20%7C%20Plasma%20Wayland%2FX11%20%7C%20Windows-informational?style=flat-square">
 </p>
 
 Windfall is a weather overlay for your desktop. Weather, sparkles or a garden are drawn over everything you do; it
 settles on the tops of your windows and on the taskbar or your bars, reacts to your cursor, and never gets in the
 way: the overlay is click-through, light, and pauses behind fullscreen apps. It is written from scratch in Rust for
-**Hyprland** (Wayland) and **Windows 10/11**, inspired by the macOS app *Snowhush* (no code from it is used).
+**Hyprland**, **Plasma Wayland/X11**, and **Windows 10/11**, inspired by the macOS app *Snowhush* (no code from it is used).
 
 ![Snow settling on a window](docs/screens/snow.jpg)
 
@@ -161,7 +161,7 @@ Windows shows a SmartScreen warning for programs it has not seen before; choose 
 Tested on Windows 11. On Windows, the top edges of windows and of the taskbar collect things (there are no bars or
 panels to detect), and fullscreen apps pause the overlay unless *Over fullscreen* is on.
 
-### Arch Linux (Hyprland)
+### Arch Linux (Plasma, Hyprland and other desktops)
 
 ```sh
 yay -S windfall            # or: paru -S windfall
@@ -174,21 +174,17 @@ git clone https://github.com/tak0dan/windfall && cd windfall/packaging
 makepkg -si
 ```
 
-Windfall is an **app**, not a service. The package installs the app `windfall` (a menu entry called **Windfall**:
-it starts in the tray, and launching it again opens the controller), the controller `windfall-gui` (also in the
-menu as **Windfall Controller**), the command-line tool `windfallctl`, and the icon. It **starts with your Hyprland
-session** through an XDG autostart entry (uwsm and dex honour it). Launch it right away from your application menu or
-with `windfall &`. If your session does not run XDG autostart, add one line to your Hyprland config:
+Windfall is an **app**, not a service. The package installs `windfall` (the menu entry), `windfall-gui` (the
+controller), `windfallctl`, and the icon. It starts through XDG autostart and checks the session and desktop as it
+launches. Launch it from the application menu or run `windfall` in a terminal; running it again opens the controller.
+Hyprland also provides a tray icon; on other backends the controller and `windfallctl` remain available.
 
-```
-exec-once = windfall                      # hyprland.conf
-hl.exec_cmd("windfall")                   -- hyprland.lua
-```
-
-If your bar starts after Windfall, nothing to do: the tray icon appears as soon as the bar's tray is there.
-(`windfalld` is the same program under its old name.)
-
-Needs Hyprland (or another compositor with `wlr-layer-shell` and `wlr-screencopy`), OpenGL ES (Mesa), GTK4 and libadwaita.
+Hyprland uses its IPC for window, bar, cursor and fullscreen tracking. Plasma Wayland uses KWin's layer-shell
+support for transparent screen-edge effects; KWin does not expose the window/bar geometry and screencopy protocols
+Windfall needs for those details. Plasma X11 and other X11 desktops use transparent, click-through monitor overlays
+and suppress them above fullscreen windows (`xorg-xprop` supplies that state check). Other Wayland compositors need
+`wlr-layer-shell`; where window-management protocols are unavailable Windfall falls back to screen-edge effects.
+The Linux app uses GTK4/libadwaita, OpenGL ES for Wayland, and Cairo for X11.
 
 ## Use
 
@@ -220,8 +216,9 @@ The same commands work with `windfallctl.exe` on Windows (installer only). Setti
   quick wave of blue puffs. Choose `windfallctl bars whole` to use the bar's whole rectangle instead.
 * **Light.** About a core's worth of CPU at most; no polling when disabled; pauses behind fullscreen windows.
 * **Screenshots.** The overlay is part of the picture on both platforms.
-* **Linux details.** Window geometry comes from Hyprland's IPC; fractional scaling is supported; the overlay is a
-  click-through `wlr-layer-shell` surface drawn with OpenGL ES. **Windows details.** A per-pixel-alpha click-through
+* **Linux details.** Hyprland provides window geometry and bar tracking; generic Wayland and X11 sessions use
+  transparent click-through screen-edge overlays. Fractional scaling is supported on the Wayland backend.
+  **Windows details.** A per-pixel-alpha click-through
   layered window per monitor, drawn by a small software rasterizer; per-monitor DPI aware.
 
 ## Build it yourself
@@ -232,8 +229,8 @@ cargo test -p windfall-core    # the simulation is fully unit-tested
 windows/build.sh               # Windows: dist/Windfall-Setup.exe, dist/windfalld.exe (cross-compiled, Docker only)
 ```
 
-The simulation (`crates/core`) knows nothing about Wayland or Windows: it turns a scene (window rectangles, bars, the
-cursor) into a list of coloured shapes. `crates/daemon` has the Hyprland and Windows backends, `crates/ctl` the
+The simulation (`crates/core`) knows nothing about desktop protocols: it turns a scene (window rectangles, bars, the
+cursor) into a list of coloured shapes. `crates/daemon` has Hyprland, generic Wayland, X11 and Windows backends, `crates/ctl` the
 command-line tool and `crates/gui` the GTK4 controller (Linux). `windfall-gui --render out.png flowers fire smooth 24`
 draws a picture of an effect without a display.
 

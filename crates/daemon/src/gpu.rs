@@ -92,19 +92,46 @@ impl Gpu {
     pub fn new(wl_display: *mut c_void) -> Result<Gpu, String> {
         unsafe {
             let egl = Egl::load_required().map_err(|e| format!("libEGL: {e}"))?;
-            let display = egl.get_display(wl_display as egl::NativeDisplayType).ok_or("no EGL display")?;
-            egl.initialize(display).map_err(|e| format!("eglInitialize: {e}"))?;
-            egl.bind_api(egl::OPENGL_ES_API).map_err(|e| format!("bind api: {e}"))?;
+            let display = egl
+                .get_display(wl_display as egl::NativeDisplayType)
+                .ok_or("no EGL display")?;
+            egl.initialize(display)
+                .map_err(|e| format!("eglInitialize: {e}"))?;
+            egl.bind_api(egl::OPENGL_ES_API)
+                .map_err(|e| format!("bind api: {e}"))?;
             let attribs = [
-                egl::SURFACE_TYPE, egl::WINDOW_BIT,
-                egl::RENDERABLE_TYPE, egl::OPENGL_ES2_BIT,
-                egl::RED_SIZE, 8, egl::GREEN_SIZE, 8, egl::BLUE_SIZE, 8, egl::ALPHA_SIZE, 8,
+                egl::SURFACE_TYPE,
+                egl::WINDOW_BIT,
+                egl::RENDERABLE_TYPE,
+                egl::OPENGL_ES2_BIT,
+                egl::RED_SIZE,
+                8,
+                egl::GREEN_SIZE,
+                8,
+                egl::BLUE_SIZE,
+                8,
+                egl::ALPHA_SIZE,
+                8,
                 egl::NONE,
             ];
-            let config = egl.choose_first_config(display, &attribs).map_err(|e| e.to_string())?.ok_or("no EGL config with alpha")?;
-            let context = egl.create_context(display, config, None, &[egl::CONTEXT_CLIENT_VERSION, 2, egl::NONE]).map_err(|e| format!("context: {e}"))?;
-            egl.make_current(display, None, None, Some(context)).map_err(|e| format!("surfaceless make_current: {e}"))?;
-            let gl = glow::Context::from_loader_function(|name| egl.get_proc_address(name).map_or(std::ptr::null(), |p| p as *const c_void));
+            let config = egl
+                .choose_first_config(display, &attribs)
+                .map_err(|e| e.to_string())?
+                .ok_or("no EGL config with alpha")?;
+            let context = egl
+                .create_context(
+                    display,
+                    config,
+                    None,
+                    &[egl::CONTEXT_CLIENT_VERSION, 2, egl::NONE],
+                )
+                .map_err(|e| format!("context: {e}"))?;
+            egl.make_current(display, None, None, Some(context))
+                .map_err(|e| format!("surfaceless make_current: {e}"))?;
+            let gl = glow::Context::from_loader_function(|name| {
+                egl.get_proc_address(name)
+                    .map_or(std::ptr::null(), |p| p as *const c_void)
+            });
             let renderer = gl.get_parameter_string(glow::RENDERER);
             let main = Self::program(&gl, VERT, FRAG)?;
             let blit = Self::program(&gl, BLIT_VERT, BLIT_FRAG)?;
@@ -113,7 +140,18 @@ impl Gpu {
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(quad));
             let verts: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
             gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&verts), glow::STATIC_DRAW);
-            Ok(Gpu { egl, display, config, context, gl, main, blit, vbo, quad, renderer })
+            Ok(Gpu {
+                egl,
+                display,
+                config,
+                context,
+                gl,
+                main,
+                blit,
+                vbo,
+                quad,
+                renderer,
+            })
         }
     }
 
@@ -140,7 +178,15 @@ impl Gpu {
     }
 
     pub fn create_surface(&self, native_window: *mut c_void) -> Result<Target, String> {
-        let surface = unsafe { self.egl.create_window_surface(self.display, self.config, native_window as egl::NativeWindowType, None) }.map_err(|e| format!("window surface: {e}"))?;
+        let surface = unsafe {
+            self.egl.create_window_surface(
+                self.display,
+                self.config,
+                native_window as egl::NativeWindowType,
+                None,
+            )
+        }
+        .map_err(|e| format!("window surface: {e}"))?;
         Ok(Target { surface, fbo: None })
     }
 
@@ -152,12 +198,16 @@ impl Gpu {
                 self.gl.delete_texture(f.tex);
             }
         }
-        let _ = self.egl.make_current(self.display, None, None, Some(self.context));
+        let _ = self
+            .egl
+            .make_current(self.display, None, None, Some(self.context));
         let _ = self.egl.destroy_surface(self.display, t.surface);
     }
 
     fn make_current(&self, s: Option<egl::Surface>) {
-        let _ = self.egl.make_current(self.display, s, s, Some(self.context));
+        let _ = self
+            .egl
+            .make_current(self.display, s, s, Some(self.context));
     }
 
     fn ensure_fbo(&self, t: &mut Target, w: i32, h: i32) {
@@ -172,13 +222,34 @@ impl Gpu {
             }
             let tex = gl.create_texture().unwrap();
             gl.bind_texture(glow::TEXTURE_2D, Some(tex));
-            gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA as i32, w, h, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(None));
-            for (k, v) in [(glow::TEXTURE_MIN_FILTER, glow::NEAREST), (glow::TEXTURE_MAG_FILTER, glow::NEAREST), (glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE), (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE)] {
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as i32,
+                w,
+                h,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(None),
+            );
+            for (k, v) in [
+                (glow::TEXTURE_MIN_FILTER, glow::NEAREST),
+                (glow::TEXTURE_MAG_FILTER, glow::NEAREST),
+                (glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE),
+                (glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE),
+            ] {
                 gl.tex_parameter_i32(glow::TEXTURE_2D, k, v as i32);
             }
             let fbo = gl.create_framebuffer().unwrap();
             gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
-            gl.framebuffer_texture_2d(glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::TEXTURE_2D, Some(tex), 0);
+            gl.framebuffer_texture_2d(
+                glow::FRAMEBUFFER,
+                glow::COLOR_ATTACHMENT0,
+                glow::TEXTURE_2D,
+                Some(tex),
+                0,
+            );
             gl.bind_framebuffer(glow::FRAMEBUFFER, None);
             t.fbo = Some(Fbo { tex, fbo, w, h });
         }
@@ -204,13 +275,21 @@ impl Gpu {
                 }
                 Some((size, levels)) => {
                     let n_dev = size as f32 * o.scale;
-                    let (pw, ph) = ((o.buf.0 as f32 / n_dev).ceil() as i32, (o.buf.1 as f32 / n_dev).ceil() as i32);
+                    let (pw, ph) = (
+                        (o.buf.0 as f32 / n_dev).ceil() as i32,
+                        (o.buf.1 as f32 / n_dev).ceil() as i32,
+                    );
                     self.ensure_fbo(t, pw, ph);
                     let f = t.fbo.as_ref().unwrap();
                     gl.bind_framebuffer(glow::FRAMEBUFFER, Some(f.fbo));
                     gl.viewport(0, 0, pw, ph);
                     gl.clear(glow::COLOR_BUFFER_BIT);
-                    self.geometry(batch, (pw as f32 * size as f32, ph as f32 * size as f32), false, 1.0);
+                    self.geometry(
+                        batch,
+                        (pw as f32 * size as f32, ph as f32 * size as f32),
+                        false,
+                        1.0,
+                    );
                     // Stretch it to the window, nearest neighbour.
                     gl.bind_framebuffer(glow::FRAMEBUFFER, None);
                     gl.viewport(0, 0, o.buf.0, o.buf.1);
@@ -221,7 +300,11 @@ impl Gpu {
                     let loc = |n: &str| gl.get_uniform_location(self.blit.p, n);
                     gl.uniform_1_i32(loc("u_tex").as_ref(), 0);
                     gl.uniform_2_f32(loc("u_buf").as_ref(), o.buf.0 as f32, o.buf.1 as f32);
-                    gl.uniform_2_f32(loc("u_texsize").as_ref(), pw as f32 * n_dev, ph as f32 * n_dev);
+                    gl.uniform_2_f32(
+                        loc("u_texsize").as_ref(),
+                        pw as f32 * n_dev,
+                        ph as f32 * n_dev,
+                    );
                     gl.uniform_1_f32(loc("u_levels").as_ref(), (levels.max(2) - 1) as f32);
                     gl.uniform_1_f32(loc("u_opacity").as_ref(), o.opacity);
                     gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.quad));

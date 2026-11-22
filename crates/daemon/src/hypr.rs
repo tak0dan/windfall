@@ -2,14 +2,14 @@
 //! A poller thread turns that into per-monitor `Scene`s and sends them to the main loop.
 
 use serde::Deserialize;
-use windfall_core::geom::Rect;
-use windfall_core::sim::{Scene, Surf, SurfKind};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+use windfall_core::geom::Rect;
+use windfall_core::sim::{Scene, Surf, SurfKind};
 
 fn socket(name: &str) -> Option<PathBuf> {
     let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
@@ -61,7 +61,11 @@ struct Monitor {
 impl Monitor {
     fn logical(&self) -> (f32, f32) {
         let s = if self.scale > 0.0 { self.scale } else { 1.0 };
-        let (w, h) = if self.transform % 2 == 1 { (self.height, self.width) } else { (self.width, self.height) };
+        let (w, h) = if self.transform % 2 == 1 {
+            (self.height, self.width)
+        } else {
+            (self.width, self.height)
+        };
         ((w / s) as f32, (h / s) as f32)
     }
 }
@@ -123,9 +127,30 @@ pub struct Snapshot {
 
 fn ignored_layer(ns: &str) -> bool {
     let ns = ns.to_ascii_lowercase();
-    ["windfall", "wallpaper", "awww", "swww", "hyprpaper", "swaybg", "wpaperd", "mpvpaper", "selection", "hyprpicker", "wlogout", "lockscreen", "hyprlock", "rofi", "wofi", "fuzzel", "notification", "swaync", "mako", "dunst"]
-        .iter()
-        .any(|bad| ns.contains(bad))
+    [
+        "windfall",
+        "wallpaper",
+        "awww",
+        "swww",
+        "hyprpaper",
+        "swaybg",
+        "wpaperd",
+        "mpvpaper",
+        "selection",
+        "hyprpicker",
+        "wlogout",
+        "lockscreen",
+        "hyprlock",
+        "rofi",
+        "wofi",
+        "fuzzel",
+        "notification",
+        "swaync",
+        "mako",
+        "dunst",
+    ]
+    .iter()
+    .any(|bad| ns.contains(bad))
 }
 
 struct Style {
@@ -134,8 +159,15 @@ struct Style {
 }
 
 fn style() -> Style {
-    let get = |name: &str, default: f32| json::<IntOption>(&format!("j/getoption {name}")).and_then(|o| o.int).map_or(default, |v| v as f32);
-    Style { rounding: get("decoration:rounding", 0.0), border: get("general:border_size", 1.0) }
+    let get = |name: &str, default: f32| {
+        json::<IntOption>(&format!("j/getoption {name}"))
+            .and_then(|o| o.int)
+            .map_or(default, |v| v as f32)
+    };
+    Style {
+        rounding: get("decoration:rounding", 0.0),
+        border: get("general:border_size", 1.0),
+    }
 }
 
 #[derive(Default)]
@@ -159,7 +191,13 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
     }
     cache.tick += 1;
     let (monitors, clients, layers) = (&cache.monitors, &cache.clients, &cache.layers);
-    let cursor: Option<[f64; 2]> = json::<std::collections::HashMap<String, f64>>("j/cursorpos").map(|m| [m.get("x").copied().unwrap_or(0.0), m.get("y").copied().unwrap_or(0.0)]);
+    let cursor: Option<[f64; 2]> = json::<std::collections::HashMap<String, f64>>("j/cursorpos")
+        .map(|m| {
+            [
+                m.get("x").copied().unwrap_or(0.0),
+                m.get("y").copied().unwrap_or(0.0),
+            ]
+        });
 
     let mut out = Vec::new();
     let mut global_cursor = None;
@@ -173,7 +211,8 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
             if !c.mapped || c.hidden || c.monitor != m.id {
                 continue;
             }
-            let on_screen = c.workspace.id == m.active.id || (m.special.id != 0 && c.workspace.id == m.special.id);
+            let on_screen = c.workspace.id == m.active.id
+                || (m.special.id != 0 && c.workspace.id == m.special.id);
             if c.fullscreen > 0 && on_screen {
                 fullscreen = true;
                 continue;
@@ -183,15 +222,25 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
                 continue;
             }
             // The window's border sits outside its geometry; snow rests on the border.
-            let z = if c.floating { 500 - c.focus.min(400) as i32 } else { 0 };
+            let z = if c.floating {
+                500 - c.focus.min(400) as i32
+            } else {
+                0
+            };
             surfs.push(Surf {
                 id: hash(&c.address, 7),
-                rect: Rect::new(x, y - style_cache.border, c.size[0] as f32, c.size[1] as f32),
+                rect: Rect::new(
+                    x,
+                    y - style_cache.border,
+                    c.size[0] as f32,
+                    c.size[1] as f32,
+                ),
                 z,
                 kind: SurfKind::Window,
                 inset: style_cache.rounding.min(c.size[0] as f32 / 3.0),
                 // Windows of other workspaces keep their snow, unseen, until they come back.
-                group: 0, shown: on_screen,
+                group: 0,
+                shown: on_screen,
             });
         }
         let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -216,13 +265,29 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
                     let nth = seen.entry(l.namespace.clone()).or_insert(0usize);
                     *nth += 1;
                     let lid = hash(&format!("{}/{}/{}", m.name, l.namespace, *nth), 11);
-                    surfs.push(Surf { id: lid, rect: Rect::new(x, y, l.w as f32, l.h as f32), z: 1000, kind: SurfKind::Layer, inset: 4.0, group: lid, shown: true });
+                    surfs.push(Surf {
+                        id: lid,
+                        rect: Rect::new(x, y, l.w as f32, l.h as f32),
+                        z: 1000,
+                        kind: SurfKind::Layer,
+                        inset: 4.0,
+                        group: lid,
+                        shown: true,
+                    });
                 }
             }
         }
         // The ground is the screen's lower edge, or the bar that sits on it.
         if !bottom_bar {
-            surfs.push(Surf { id: 1, rect: Rect::new(0.0, h - bottom, w, 4000.0), z: -1, kind: SurfKind::Ground, inset: 0.0, group: 0, shown: true });
+            surfs.push(Surf {
+                id: 1,
+                rect: Rect::new(0.0, h - bottom, w, 4000.0),
+                z: -1,
+                kind: SurfKind::Ground,
+                inset: 0.0,
+                group: 0,
+                shown: true,
+            });
         }
         let mut local = None;
         if let Some(c) = cursor {
@@ -232,13 +297,25 @@ fn snapshot(style_cache: &Style, cache: &mut Cache) -> Option<(Snapshot, Option<
                 global_cursor = local;
             }
         }
-        out.push(MonScene { name: m.name.clone(), scene: Scene { w, h, surfs, cursor: local }, fullscreen });
+        out.push(MonScene {
+            name: m.name.clone(),
+            scene: Scene {
+                w,
+                h,
+                surfs,
+                cursor: local,
+            },
+            fullscreen,
+        });
     }
     Some((Snapshot { monitors: out }, global_cursor))
 }
 
 /// Polls Hyprland on a thread and sends a snapshot whenever it changed.
-pub fn spawn(mut send: impl FnMut(Snapshot) -> bool + Send + 'static, awake: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+pub fn spawn(
+    mut send: impl FnMut(Snapshot) -> bool + Send + 'static,
+    awake: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) {
     std::thread::Builder::new()
         .name("hyprland".into())
         .spawn(move || {
@@ -258,10 +335,25 @@ pub fn spawn(mut send: impl FnMut(Snapshot) -> bool + Send + 'static, awake: std
                 }
                 cache.fast = last_change.elapsed() < Duration::from_millis(500);
                 if let Some((snap, _)) = snapshot(&style, &mut cache) {
-                    let key: Vec<_> = snap.monitors.iter().map(|m| (m.name.clone(), m.scene.surfs.clone(), m.scene.cursor, m.fullscreen)).collect();
+                    let key: Vec<_> = snap
+                        .monitors
+                        .iter()
+                        .map(|m| {
+                            (
+                                m.name.clone(),
+                                m.scene.surfs.clone(),
+                                m.scene.cursor,
+                                m.fullscreen,
+                            )
+                        })
+                        .collect();
                     if last.as_ref() != Some(&key) {
                         // Only geometry counts, not the pointer.
-                        if last.as_ref().map_or(true, |l| l.iter().map(|m| (&m.0, &m.1, m.3)).ne(key.iter().map(|m| (&m.0, &m.1, m.3)))) {
+                        if last.as_ref().map_or(true, |l| {
+                            l.iter()
+                                .map(|m| (&m.0, &m.1, m.3))
+                                .ne(key.iter().map(|m| (&m.0, &m.1, m.3)))
+                        }) {
                             last_change = Instant::now();
                         }
                         last = Some(key);

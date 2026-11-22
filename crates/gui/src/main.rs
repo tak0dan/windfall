@@ -7,12 +7,12 @@ use colorpicker::Picker;
 use adw::prelude::*;
 use gtk::glib;
 use libadwaita as adw;
-use windfall_core::config::{BarMode, Config, Effect, Element, Patch, Renderer};
-use windfall_core::ipc::{self, Request, Response};
 use std::cell::{Cell, RefCell};
 use std::io::{BufRead, BufReader};
 use std::rc::Rc;
 use std::sync::mpsc;
+use windfall_core::config::{BarMode, Config, Effect, Element, Patch, Renderer};
+use windfall_core::ipc::{self, Request, Response};
 
 const APP_ID: &str = "io.github.tak0dan.Windfall";
 
@@ -21,13 +21,25 @@ fn main() -> glib::ExitCode {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--render") {
         let mut c = Config::default();
-        c.effect = args.get(3).and_then(|s| Effect::parse(s)).unwrap_or(Effect::Snow);
-        c.element = args.get(4).and_then(|s| Element::parse(s)).unwrap_or(Element::Natural);
-        c.renderer = args.get(5).and_then(|s| Renderer::parse(s)).unwrap_or(Renderer::Smooth);
+        c.effect = args
+            .get(3)
+            .and_then(|s| Effect::parse(s))
+            .unwrap_or(Effect::Snow);
+        c.element = args
+            .get(4)
+            .and_then(|s| Element::parse(s))
+            .unwrap_or(Element::Natural);
+        c.renderer = args
+            .get(5)
+            .and_then(|s| Renderer::parse(s))
+            .unwrap_or(Renderer::Smooth);
         c.intensity = 0.8;
         let secs = args.get(6).and_then(|s| s.parse().ok()).unwrap_or(25.0);
         let out = args.get(2).cloned().unwrap_or_else(|| "preview.png".into());
-        let cursor = match (args.get(7).and_then(|s| s.parse::<f32>().ok()), args.get(8).and_then(|s| s.parse::<f32>().ok())) {
+        let cursor = match (
+            args.get(7).and_then(|s| s.parse::<f32>().ok()),
+            args.get(8).and_then(|s| s.parse::<f32>().ok()),
+        ) {
             (Some(x), Some(y)) => Some([x, y]),
             _ => None,
         };
@@ -49,7 +61,11 @@ fn ensure_daemon() -> bool {
     if ipc::connect().is_ok() {
         return true;
     }
-    let _ = std::process::Command::new("windfalld").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+    let _ = std::process::Command::new("windfalld")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
     for _ in 0..30 {
         std::thread::sleep(std::time::Duration::from_millis(100));
         if ipc::connect().is_ok() {
@@ -128,20 +144,36 @@ impl Ui {
         self.ground.set_active(c.ground);
         self.windows.set_active(c.windows);
         self.layers.set_active(c.layers);
-        self.bar_mode.set_selected(BarMode::ALL.iter().position(|m| *m == c.bar_mode).unwrap_or(0) as u32);
+        self.bar_mode.set_selected(
+            BarMode::ALL
+                .iter()
+                .position(|m| *m == c.bar_mode)
+                .unwrap_or(0) as u32,
+        );
         self.bar_mode.set_sensitive(c.layers);
         self.element_row.set_visible(c.effect == Effect::Flowers);
-        self.element_row.set_selected(Element::ALL.iter().position(|e| *e == c.element).unwrap_or(0) as u32);
+        self.element_row.set_selected(
+            Element::ALL
+                .iter()
+                .position(|e| *e == c.element)
+                .unwrap_or(0) as u32,
+        );
         // Colours: each effect shows the ones that matter to it; lights have their own only when nothing else is on.
         let one_colour = c.effect == Effect::Flowers && c.element == Element::Natural;
         self.glow_row.set_visible(c.effect == Effect::Flowers);
         self.hearts_row.set_visible(c.effect == Effect::Hearts);
         self.comets_row.set_visible(c.effect == Effect::Comets);
-        self.lights_row.set_visible(c.effect == Effect::Off && c.lights);
+        self.lights_row
+            .set_visible(c.effect == Effect::Off && c.lights);
         self.flower_single.set_visible(one_colour);
         self.flower_single.set_active(c.flower_single);
         self.flower_row.set_visible(one_colour && c.flower_single);
-        self.colours.set_visible(c.effect == Effect::Flowers || c.effect == Effect::Hearts || c.effect == Effect::Comets || (c.effect == Effect::Off && c.lights));
+        self.colours.set_visible(
+            c.effect == Effect::Flowers
+                || c.effect == Effect::Hearts
+                || c.effect == Effect::Comets
+                || (c.effect == Effect::Off && c.lights),
+        );
         self.glow_p.set_hex(&c.glow_color);
         self.hearts_p.set_hex(&c.hearts_color);
         self.comets_p.set_hex(&c.comet_color);
@@ -150,8 +182,13 @@ impl Ui {
         self.interact.set_active(c.interact);
         self.over_fs.set_active(c.over_fullscreen);
         self.preview.set_config(c);
-        if old.effect != c.effect || old.renderer != c.renderer || old.element != c.element || self.provider.to_str().is_empty() {
-            self.provider.load_from_string(&theme::css(c.effect, c.renderer, c.element));
+        if old.effect != c.effect
+            || old.renderer != c.renderer
+            || old.element != c.element
+            || self.provider.to_str().is_empty()
+        {
+            self.provider
+                .load_from_string(&theme::css(c.effect, c.renderer, c.element));
         }
         self.updating.set(false);
     }
@@ -173,7 +210,10 @@ fn scale_row(title: &str, scale: &gtk::Scale) -> adw::ActionRow {
 }
 
 fn switch_row(title: &str, subtitle: &str) -> adw::SwitchRow {
-    adw::SwitchRow::builder().title(title).subtitle(subtitle).build()
+    adw::SwitchRow::builder()
+        .title(title)
+        .subtitle(subtitle)
+        .build()
 }
 
 fn build(app: &adw::Application) {
@@ -185,7 +225,11 @@ fn build(app: &adw::Application) {
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
     let provider = gtk::CssProvider::new();
     if let Some(display) = gtk::gdk::Display::default() {
-        gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_USER);
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_USER,
+        );
     }
 
     let (send, recv) = mpsc::channel::<Request>();
@@ -231,13 +275,31 @@ fn build(app: &adw::Application) {
         Effect::Hearts => "Hearts",
         other => other.title(),
     };
-    let (effect_row_a, mut ebuttons) = picker(Effect::ALL[..4].iter().enumerate().map(|(i, e)| (short(e).to_string(), i)).collect());
-    let (effect_row_b, ebuttons_b) = picker(Effect::ALL[4..].iter().enumerate().map(|(i, e)| (short(e).to_string(), i)).collect());
+    let (effect_row_a, mut ebuttons) = picker(
+        Effect::ALL[..4]
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (short(e).to_string(), i))
+            .collect(),
+    );
+    let (effect_row_b, ebuttons_b) = picker(
+        Effect::ALL[4..]
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (short(e).to_string(), i))
+            .collect(),
+    );
     for b in &ebuttons_b {
         b.set_group(Some(&ebuttons[0]));
     }
     ebuttons.extend(ebuttons_b);
-    let (renderer_row, rbuttons) = picker(Renderer::ALL.iter().enumerate().map(|(i, r)| (r.title().to_string(), i)).collect());
+    let (renderer_row, rbuttons) = picker(
+        Renderer::ALL
+            .iter()
+            .enumerate()
+            .map(|(i, r)| (r.title().to_string(), i))
+            .collect(),
+    );
     // A toggle right under the modes: lights work over every mode, Off included.
     let lights = gtk::ToggleButton::with_label("✦  Floating lights  (on top of any mode)");
     lights.set_tooltip_text(Some("Soft glowing circles over any effect, in its colours. With the effect Off you pick their colour."));
@@ -260,8 +322,13 @@ fn build(app: &adw::Application) {
     main_group.add(&scale_row("Intensity", &intensity));
     main_group.add(&scale_row("Opacity", &opacity));
     main_group.add(&scale_row("Wind", &wind));
-    let element_row = adw::ComboRow::builder().title("Flower element").subtitle("What the flowers are made of").build();
-    element_row.set_model(Some(&gtk::StringList::new(&Element::ALL.map(|e| e.title()))));
+    let element_row = adw::ComboRow::builder()
+        .title("Flower element")
+        .subtitle("What the flowers are made of")
+        .build();
+    element_row.set_model(Some(&gtk::StringList::new(
+        &Element::ALL.map(|e| e.title()),
+    )));
     main_group.add(&element_row);
     page.append(&main_group);
 
@@ -270,28 +337,60 @@ fn build(app: &adw::Application) {
     pixel_group.add(&scale_row("Colours", &pixel_levels));
     page.append(&pixel_group);
 
-    let enabled = switch_row("Display", "Show the effect on every monitor; remembered between sessions");
+    let enabled = switch_row(
+        "Display",
+        "Show the effect on every monitor; remembered between sessions",
+    );
     let melt = switch_row("Melt and wither", "Piles slowly disappear on their own");
-    let ground = switch_row("Bottom of the screen", "Collect along the screen's lower edge");
+    let ground = switch_row(
+        "Bottom of the screen",
+        "Collect along the screen's lower edge",
+    );
     let windows = switch_row("Windows", "Collect on top of windows");
-    let layers = switch_row("Bars and panels", "Waybar, Quickshell and other shell surfaces");
-    let bar_mode = adw::ComboRow::builder().title("Bars hold things on").subtitle("Transparent bars: only their visible modules").build();
-    bar_mode.set_model(Some(&gtk::StringList::new(&BarMode::ALL.map(|m| m.title()))));
+    let layers = switch_row(
+        "Bars and panels",
+        "Waybar, Quickshell and other shell surfaces",
+    );
+    let bar_mode = adw::ComboRow::builder()
+        .title("Bars hold things on")
+        .subtitle("Transparent bars: only their visible modules")
+        .build();
+    bar_mode.set_model(Some(&gtk::StringList::new(
+        &BarMode::ALL.map(|m| m.title()),
+    )));
     let colour_row = |title: &str, subtitle: &str| -> (adw::ExpanderRow, Picker) {
         let p = Picker::new();
-        let row = adw::ExpanderRow::builder().title(title).subtitle(subtitle).build();
+        let row = adw::ExpanderRow::builder()
+            .title(title)
+            .subtitle(subtitle)
+            .build();
         row.add_suffix(&p.swatch);
         row.add_row(&p.root);
         (row, p)
     };
     let (glow_row, glow_p) = colour_row("Glow colour", "Flowers glow and sparkle in this colour");
     let (hearts_row, hearts_p) = colour_row("Heart colour", "The hearts and their sparks");
-    let (comets_row, comets_p) = colour_row("Shooting star colour", "Tails, glow and the sparks where they hit");
-    let (lights_row, lights_p) = colour_row("Light colour", "Used while the effect is Off; with an effect on, the lights take its colours");
-    let flower_single = switch_row("One colour for all flowers", "Random shapes, one colour you pick");
+    let (comets_row, comets_p) = colour_row(
+        "Shooting star colour",
+        "Tails, glow and the sparks where they hit",
+    );
+    let (lights_row, lights_p) = colour_row(
+        "Light colour",
+        "Used while the effect is Off; with an effect on, the lights take its colours",
+    );
+    let flower_single = switch_row(
+        "One colour for all flowers",
+        "Random shapes, one colour you pick",
+    );
     let (flower_row, flower_p) = colour_row("Flower colour", "Every flower is a shade of this");
     let colours = adw::PreferencesGroup::builder().title("Colours").build();
-    for r in [&hearts_row, &comets_row, &lights_row, &glow_row, &flower_row] {
+    for r in [
+        &hearts_row,
+        &comets_row,
+        &lights_row,
+        &glow_row,
+        &flower_row,
+    ] {
         colours.add(r);
     }
     colours.add(&flower_single);
@@ -312,9 +411,20 @@ fn build(app: &adw::Application) {
     clear.set_halign(gtk::Align::Center);
     page.append(&clear);
 
-    let scroller = gtk::ScrolledWindow::builder().child(&page).hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).build();
+    let scroller = gtk::ScrolledWindow::builder()
+        .child(&page)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vexpand(true)
+        .build();
     toolbar.set_content(Some(&scroller));
-    let window = adw::ApplicationWindow::builder().application(app).title("Windfall Controller").default_width(460).default_height(900).resizable(false).content(&toolbar).build();
+    let window = adw::ApplicationWindow::builder()
+        .application(app)
+        .title("Windfall Controller")
+        .default_width(460)
+        .default_height(900)
+        .resizable(false)
+        .content(&toolbar)
+        .build();
 
     let ui = Rc::new(Ui {
         updating: Cell::new(false),
@@ -358,18 +468,35 @@ fn build(app: &adw::Application) {
     // Widget -> daemon.
     for (e, b) in &ui.effect_buttons {
         let (ui, e) = (ui.clone(), *e);
-        b.connect_toggled(move |b| if b.is_active() { ui.patch(Patch { effect: Some(e), ..Default::default() }) });
+        b.connect_toggled(move |b| {
+            if b.is_active() {
+                ui.patch(Patch {
+                    effect: Some(e),
+                    ..Default::default()
+                })
+            }
+        });
     }
     for (r, b) in &ui.renderer_buttons {
         let (ui, r) = (ui.clone(), *r);
-        b.connect_toggled(move |b| if b.is_active() { ui.patch(Patch { renderer: Some(r), ..Default::default() }) });
+        b.connect_toggled(move |b| {
+            if b.is_active() {
+                ui.patch(Patch {
+                    renderer: Some(r),
+                    ..Default::default()
+                })
+            }
+        });
     }
     macro_rules! scale {
         ($w:ident, $field:ident, $conv:expr) => {{
             let ui2 = ui.clone();
             ui.$w.connect_value_changed(move |s| {
                 let v = s.value();
-                ui2.patch(Patch { $field: Some($conv(v)), ..Default::default() })
+                ui2.patch(Patch {
+                    $field: Some($conv(v)),
+                    ..Default::default()
+                })
             });
         }};
     }
@@ -381,7 +508,12 @@ fn build(app: &adw::Application) {
     macro_rules! toggle {
         ($w:ident, $field:ident) => {{
             let ui2 = ui.clone();
-            ui.$w.connect_active_notify(move |s| ui2.patch(Patch { $field: Some(s.is_active()), ..Default::default() }));
+            ui.$w.connect_active_notify(move |s| {
+                ui2.patch(Patch {
+                    $field: Some(s.is_active()),
+                    ..Default::default()
+                })
+            });
         }};
     }
     toggle!(enabled, enabled);
@@ -395,29 +527,66 @@ fn build(app: &adw::Application) {
         let ui2 = ui.clone();
         ui.element_row.connect_selected_notify(move |r| {
             if let Some(e) = Element::ALL.get(r.selected() as usize) {
-                ui2.patch(Patch { element: Some(*e), ..Default::default() })
+                ui2.patch(Patch {
+                    element: Some(*e),
+                    ..Default::default()
+                })
             }
         });
     }
     {
-        let (ui2, ) = (ui.clone(),);
-        ui.glow_p.connect_changed(move |hexv| ui2.patch(Patch { glow_color: Some(hexv), ..Default::default() }));
+        let (ui2,) = (ui.clone(),);
+        ui.glow_p.connect_changed(move |hexv| {
+            ui2.patch(Patch {
+                glow_color: Some(hexv),
+                ..Default::default()
+            })
+        });
         let ui2 = ui.clone();
-        ui.hearts_p.connect_changed(move |hexv| ui2.patch(Patch { hearts_color: Some(hexv), ..Default::default() }));
+        ui.hearts_p.connect_changed(move |hexv| {
+            ui2.patch(Patch {
+                hearts_color: Some(hexv),
+                ..Default::default()
+            })
+        });
         let ui2 = ui.clone();
-        ui.comets_p.connect_changed(move |hexv| ui2.patch(Patch { comet_color: Some(hexv), ..Default::default() }));
+        ui.comets_p.connect_changed(move |hexv| {
+            ui2.patch(Patch {
+                comet_color: Some(hexv),
+                ..Default::default()
+            })
+        });
         let ui2 = ui.clone();
-        ui.lights_p.connect_changed(move |hexv| ui2.patch(Patch { lights_color: Some(hexv), ..Default::default() }));
+        ui.lights_p.connect_changed(move |hexv| {
+            ui2.patch(Patch {
+                lights_color: Some(hexv),
+                ..Default::default()
+            })
+        });
         let ui2 = ui.clone();
-        ui.flower_p.connect_changed(move |hexv| ui2.patch(Patch { flower_color: Some(hexv), flower_single: Some(true), ..Default::default() }));
+        ui.flower_p.connect_changed(move |hexv| {
+            ui2.patch(Patch {
+                flower_color: Some(hexv),
+                flower_single: Some(true),
+                ..Default::default()
+            })
+        });
         let ui2 = ui.clone();
-        ui.flower_single.connect_active_notify(move |r| ui2.patch(Patch { flower_single: Some(r.is_active()), ..Default::default() }));
+        ui.flower_single.connect_active_notify(move |r| {
+            ui2.patch(Patch {
+                flower_single: Some(r.is_active()),
+                ..Default::default()
+            })
+        });
     }
     {
         let ui2 = ui.clone();
         ui.bar_mode.connect_selected_notify(move |r| {
             if let Some(m) = BarMode::ALL.get(r.selected() as usize) {
-                ui2.patch(Patch { bar_mode: Some(*m), ..Default::default() })
+                ui2.patch(Patch {
+                    bar_mode: Some(*m),
+                    ..Default::default()
+                })
             }
         });
     }
@@ -478,7 +647,13 @@ fn build(app: &adw::Application) {
     });
     // WINDFALL_EXPAND=1 opens the colour pickers (handy for screenshots).
     if std::env::var_os("WINDFALL_EXPAND").is_some() {
-        for r in [&ui.hearts_row, &ui.comets_row, &ui.lights_row, &ui.glow_row, &ui.flower_row] {
+        for r in [
+            &ui.hearts_row,
+            &ui.comets_row,
+            &ui.lights_row,
+            &ui.glow_row,
+            &ui.flower_row,
+        ] {
             r.set_expanded(true);
         }
     }
